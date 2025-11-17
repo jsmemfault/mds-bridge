@@ -1,7 +1,5 @@
 # Memfault HID Library
 
-⚠️⚠️⚠️⚠️ VERY WIP ⚠️⚠️⚠️⚠️
-
 A cross-platform C library for communicating with HID devices using custom report types. This library is designed to be integrated into desktop applications that may use other HID reports for additional device functionality.
 
 ## Features
@@ -9,10 +7,12 @@ A cross-platform C library for communicating with HID devices using custom repor
 - **Cross-platform support**: Windows, macOS, and Linux
 - **Built on HIDAPI**: Reliable cross-platform HID communication
 - **Memfault Diagnostic Service (MDS)**: Built-in protocol for bridging diagnostic data over HID
+- **HTTP chunk uploader**: Built-in libcurl-based uploader for Memfault cloud integration
 - **Report filtering**: Configure which Report IDs the library handles
 - **Simple API**: Easy-to-use interface for HID communication
 - **Integration-friendly**: Designed to coexist with other HID functionality in applications
 - **Pure C implementation**: Maximum compatibility and portability
+- **Comprehensive testing**: Full test suite with mocked dependencies (no hardware required)
 
 ## Architecture
 
@@ -45,6 +45,22 @@ sudo apt-get install libhidapi-dev
 **Windows:**
 - Download HIDAPI from https://github.com/libusb/hidapi
 - Or use vcpkg: `vcpkg install hidapi`
+
+#### libcurl (for HTTP chunk uploading)
+
+**macOS:**
+```bash
+brew install curl
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install libcurl4-openssl-dev
+```
+
+**Windows:**
+- Usually included with Windows
+- Or use vcpkg: `vcpkg install curl`
 
 #### CMake
 
@@ -200,14 +216,12 @@ int main(void) {
 
 The MDS protocol uses HID reports to communicate diagnostic data:
 
-- **Feature Reports** (Read-only):
-  - `0x01`: Supported features bitmask
-  - `0x02`: Device identifier string
-  - `0x03`: Data URI for chunk upload
-  - `0x04`: Authorization header (e.g., project key)
-
-- **Output Reports** (Host → Device):
-  - `0x05`: Stream control (enable/disable streaming)
+- **Feature Reports** (Configuration & Control):
+  - `0x01`: Supported features bitmask (read-only)
+  - `0x02`: Device identifier string (read-only)
+  - `0x03`: Data URI for chunk upload (read-only)
+  - `0x04`: Authorization header (read-only, e.g., project key)
+  - `0x05`: Stream control (read-write, enable/disable streaming)
 
 - **Input Reports** (Device → Host):
   - `0x06`: Stream data packets with diagnostic chunks
@@ -346,34 +360,28 @@ if (ret == MEMFAULT_HID_SUCCESS) {
 
 ## Examples
 
-The library includes several example programs:
+The library includes MDS example programs:
 
-- `enumerate_devices`: List all HID devices
-- `send_receive`: Send and receive reports
-- `continuous_comm`: Continuous communication loop
-- `mds_gateway`: Full MDS gateway with chunk forwarding to Memfault cloud
+- **`mds_gateway`**: Full MDS gateway that uploads diagnostic chunks to Memfault cloud
+- **`mds_monitor`**: Real-time monitor for inspecting MDS stream data
 
 To run the examples after building:
 
 ```bash
-# List all HID devices
-./build/examples/enumerate_devices
+# MDS gateway - upload chunks to Memfault cloud
+./build/examples/mds_gateway 2fe3 0007
 
-# List devices with specific VID/PID
-./build/examples/enumerate_devices 1234 5678
+# MDS gateway - dry-run mode (print chunks without uploading)
+./build/examples/mds_gateway 2fe3 0007 --dry-run
 
-# Send and receive with a device
-./build/examples/send_receive 1234 5678
+# MDS monitor - display stream data in real-time
+./build/examples/mds_monitor 2fe3 0007
 
-# Continuous communication
-./build/examples/continuous_comm 1234 5678
-
-# MDS gateway (with built-in HTTP uploader)
-./build/examples/mds_gateway 1234 5678
-
-# MDS gateway (with custom upload callback)
-./build/examples/mds_gateway 1234 5678 --custom-upload
+# MDS monitor - interactive device selection
+./build/examples/mds_monitor
 ```
+
+See [examples/README.md](examples/README.md) for detailed documentation on each example.
 
 ## API Reference
 
@@ -455,18 +463,24 @@ make test
 Output:
 ```
 Running tests...
+Test project /path/to/build
     Start 1: HID_Tests
-1/2 Test #1: HID_Tests ........................   Passed    0.11 sec
+1/3 Test #1: HID_Tests ........................   Passed    0.11 sec
     Start 2: Upload_Tests
-2/2 Test #2: Upload_Tests .....................   Passed    0.01 sec
+2/3 Test #2: Upload_Tests .....................   Passed    0.01 sec
+    Start 3: MDS_E2E_Test
+3/3 Test #3: MDS_E2E_Test .....................   Passed    0.01 sec
 
-100% tests passed, 0 tests failed out of 2
+100% tests passed, 0 tests failed out of 3
 ```
 
 ### Test Suites
 
 - **HID Tests** (`test_hid`): 20 tests covering HID communication and MDS protocol with mock hidapi
 - **Upload Tests** (`test_upload`): 12 tests covering HTTP upload functionality with mock libcurl
+- **E2E Integration Test** (`test_mds_e2e`): Complete gateway workflow test with mocked device and cloud
+
+All tests use mocked implementations (no hardware or network required).
 
 ### Run Individual Suites
 
@@ -476,6 +490,9 @@ Running tests...
 
 # Run upload tests only
 ./test/test_upload
+
+# Run end-to-end integration test
+./test/test_mds_e2e
 
 # Run with CTest for detailed output
 ctest --output-on-failure
