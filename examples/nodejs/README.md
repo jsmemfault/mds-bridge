@@ -1,28 +1,29 @@
 # Node.js MDS Example
 
-This example demonstrates how to use the Memfault HID library from Node.js using FFI (Foreign Function Interface). It shows how to run MDS (Memfault Diagnostic Service) streaming in parallel with custom HID application logic.
+This directory contains a Node.js example demonstrating how to use the Memfault Diagnostic Service (MDS) protocol with a custom backend.
 
 ## Architecture
 
-The example uses a hybrid approach:
+This example implements the pluggable backend architecture:
 
-- **Node-HID**: Handles all actual HID I/O (reading/writing reports)
-- **C Library (via FFI)**: Provides MDS protocol logic (parsing, validation, sequence tracking)
-- **JavaScript**: Application logic and orchestration
+- **Node-HID**: Wrapped in a custom backend class
+- **C Library**: Calls back to JavaScript for HID I/O operations
+- **JavaScript**: Implements backend interface, uses high-level MDS API
 
-This architecture allows you to:
-
-1. Use existing Node.js HID libraries and ecosystem
-2. Leverage the robust C implementation of MDS protocol
-3. Run MDS streaming alongside your custom HID application
-4. Avoid re-implementing the MDS protocol in JavaScript
+**Benefits:**
+- Cleaner, simpler code
+- Transport-agnostic design (works with HID, Serial, BLE, etc.)
+- No manual buffer management or protocol details exposed
+- Uses high-level MDS API
+- Demonstrates pluggable architecture
 
 ## Files
 
 - `package.json` - Node.js dependencies and build scripts
-- `bindings.js` - Low-level FFI bindings to the C library
-- `mds-client.js` - High-level MDS client wrapper
-- `index.js` - Example application showing parallel HID usage
+- `bindings.js` - FFI bindings to the C library
+- `node-hid-backend.js` - Custom backend implementing MDS backend interface
+- `mds-client.js` - MDS client using custom backend
+- `index.js` - Example application
 - `README.md` - This file
 
 ## Prerequisites
@@ -71,68 +72,103 @@ The application will:
 2. Initialize the MDS client
 3. Read device configuration (device ID, URI, auth)
 4. Enable diagnostic data streaming
-5. Process incoming data:
-   - Route MDS stream data to the MDS client
-   - Route custom reports to your application logic
+5. Process incoming transport data:
+   - MDS client automatically handles MDS protocol data
+   - Custom reports are passed to your application logic
 6. Optionally upload chunks to Memfault cloud
 
 Press `Ctrl+C` to stop gracefully.
 
 ## How It Works
 
-### 1. HID I/O with Node-HID
+### 1. Custom Backend Implementation
 
-All HID communication is handled by Node-HID:
+The `NodeHIDBackend` class implements the MDS backend interface using node-hid:
 
 ```javascript
-const device = new HID.HID(devicePath);
+class NodeHIDBackend {
+  constructor(hidDevice) {
+    this.device = hidDevice;
 
-// Read feature reports
-const data = device.getFeatureReport(reportId, length);
+    // Create callbacks that the C library will invoke for HID I/O
+    const readCallback = ffi.Callback(..., (impl_data, report_id, buffer, length, timeout_ms) => {
+      return this._handleRead(report_id, buffer, length, timeout_ms);
+    });
 
-// Write output reports
-device.write([reportId, ...data]);
+    const writeCallback = ffi.Callback(..., (impl_data, report_id, buffer, length) => {
+      return this._handleWrite(report_id, buffer, length);
+    });
 
-// Listen for input reports
+    // Create backend structure with operations
+    this.backend = new mds_backend_t({
+      ops: new mds_backend_ops_t({ read: readCallback, write: writeCallback }),
+      impl_data: voidPtr.NULL,
+    });
+  }
+
+  _handleRead(report_id, buffer, length, timeout_ms) {
+    // Feature reports (0x01-0x05)
+    const data = this.device.getFeatureReport(report_id, length);
+    data.slice(1).copy(buffer);  // Copy to C buffer
+    return data.length - 1;
+  }
+
+  _handleWrite(report_id, buffer, length) {
+    // Write feature reports
+    this.device.write([report_id, ...buffer]);
+    return length;
+  }
+}
+```
+
+### 2. MDS Session with Custom Backend
+
+The MDS client creates a session using the custom backend:
+
+```javascript
+const backend = new NodeHIDBackend(device);
+const sessionPtr = ref.alloc(mds_session_ptr);
+lib.mds_session_create(backend.getBackendRef(), sessionPtr);
+const session = sessionPtr.deref();
+
+// Use high-level API - C library calls our backend for HID I/O
+const config = new mds_device_config_t();
+lib.mds_read_device_config(session, config.ref());
+
+// Enable streaming
+lib.mds_stream_enable(session);
+```
+
+### 3. Processing Transport Data (Transport-Agnostic API)
+
+The MDS client provides a clean, transport-agnostic API for processing data:
+
+```javascript
+// Set up chunk callback
+mdsClient.setChunkCallback(async (packet) => {
+  console.log(`Received chunk: seq=${packet.sequence}, len=${packet.length} bytes`);
+  await mdsClient.uploadChunk(packet.data);
+});
+
+// Process incoming data
 device.on('data', (data) => {
-  // Handle incoming data
+  // Let MDS process first - returns true if it handled the data
+  if (mdsClient.process(Buffer.from(data))) {
+    return;  // MDS handled it internally
+  }
+
+  // Not MDS data - handle as custom report
+  handleCustomReport(data);
 });
 ```
 
-### 2. MDS Protocol via C Library
+**For multiplexed transports (HID, Serial):**
+- Use `process(data)` where `data[0]` is the channel/report ID
+- Returns `true` if MDS handled it, `false` if it's for your application
 
-The C library handles protocol logic through buffer-based functions:
-
-```javascript
-// Parse a stream packet
-const packet = new mds_stream_packet_t();
-lib.mds_parse_stream_packet(buffer, length, packet.ref());
-
-// Validate sequence numbers
-const isValid = lib.mds_validate_sequence(prevSeq, newSeq);
-
-// Build stream control reports
-lib.mds_build_stream_control(enable, buffer, length);
-```
-
-### 3. Parallel Operation
-
-The application routes HID reports to the appropriate handler:
-
-```javascript
-handleHIDData(data) {
-  const reportId = data[0];
-
-  // Custom application reports
-  if (reportId !== MDS_REPORT_ID.STREAM_DATA) {
-    this.customApp.processCustomReport(data);
-    return;
-  }
-
-  // MDS stream data
-  this.mdsClient.processHIDData(data);
-}
-```
+**For pre-demultiplexed transports (BLE GATT characteristics):**
+- Use `processStreamData(payload)` when receiving from the MDS characteristic
+- No channel ID prefix needed (characteristic UUID already identifies it as MDS data)
 
 ## Example Output
 
@@ -168,41 +204,88 @@ Application running. Press Ctrl+C to exit.
 
 To use MDS in your existing Node.js HID application:
 
-1. **Add the FFI bindings and MDS client:**
-   - Copy `bindings.js` and `mds-client.js` to your project
-   - Install dependencies: `npm install ffi-napi ref-napi ref-struct-napi ref-array-napi`
+1. **Add the required files to your project:**
+   - Copy `bindings.js`, `node-hid-backend.js`, and `mds-client.js` to your project
+   - Install dependencies: `npm install ffi-napi ref-napi ref-struct-napi ref-array-napi node-hid`
 
 2. **Create an MDS client instance:**
    ```javascript
+   import HID from 'node-hid';
    import { MDSClient } from './mds-client.js';
 
-   const mdsClient = new MDSClient(yourHIDDevice);
+   const device = new HID.HID(devicePath);
+   const mdsClient = new MDSClient(device);
    await mdsClient.initialize();
    ```
 
-3. **Enable streaming:**
-   ```javascript
-   await mdsClient.enableStreaming();
-   ```
-
-4. **Route MDS reports in your data handler:**
-   ```javascript
-   yourHIDDevice.on('data', (data) => {
-     if (data[0] === MDS_REPORT_ID.STREAM_DATA) {
-       mdsClient.processHIDData(data);
-     } else {
-       // Your custom application logic
-       handleCustomReport(data);
-     }
-   });
-   ```
-
-5. **Handle received chunks:**
+3. **Set up chunk callback:**
    ```javascript
    mdsClient.setChunkCallback(async (packet) => {
      console.log(`Received chunk: ${packet.length} bytes`);
      await mdsClient.uploadChunk(packet.data);
    });
+   ```
+
+4. **Enable streaming:**
+   ```javascript
+   await mdsClient.enableStreaming();
+   ```
+
+5. **Process incoming transport data:**
+   ```javascript
+   device.on('data', (data) => {
+     // Let MDS process first - returns true if it handled the data
+     if (mdsClient.process(Buffer.from(data))) {
+       return;  // MDS handled it internally
+     }
+
+     // Not MDS data - handle as custom report
+     handleCustomReport(data);
+   });
+   ```
+
+## Creating Custom Backends
+
+You can implement backends for other transports (Serial, BLE, etc.) by following the same pattern:
+
+1. **Implement the backend interface:**
+   ```javascript
+   class CustomBackend {
+     constructor(transport) {
+       this.transport = transport;
+
+       // Create read/write callbacks
+       const readCallback = ffi.Callback('int', [...], (impl_data, report_id, buffer, length, timeout_ms) => {
+         // Read from your transport
+         const data = this.transport.read(report_id, length);
+         data.copy(buffer);
+         return data.length;
+       });
+
+       const writeCallback = ffi.Callback('int', [...], (impl_data, report_id, buffer, length) => {
+         // Write to your transport
+         this.transport.write(report_id, buffer);
+         return length;
+       });
+
+       // Create backend structure
+       this.backend = new mds_backend_t({
+         ops: new mds_backend_ops_t({ read: readCallback, write: writeCallback }),
+         impl_data: voidPtr.NULL,
+       });
+     }
+
+     getBackendRef() {
+       return this.backend.ref();
+     }
+   }
+   ```
+
+2. **Use it with MDS:**
+   ```javascript
+   const backend = new CustomBackend(myTransport);
+   const sessionPtr = ref.alloc(mds_session_ptr);
+   lib.mds_session_create(backend.getBackendRef(), sessionPtr);
    ```
 
 ## API Reference
@@ -220,7 +303,8 @@ new MDSClient(hidDevice)
 - `async readDeviceConfig()` - Read device configuration from device
 - `async enableStreaming()` - Enable diagnostic data streaming
 - `async disableStreaming()` - Disable streaming
-- `processHIDData(data)` - Process incoming HID input report
+- `process(data)` - Process transport data (multiplexed transports like HID/Serial), returns boolean
+- `processStreamData(payload)` - Process MDS stream payload (pre-demultiplexed transports like BLE)
 - `async uploadChunk(chunkData)` - Upload chunk data to Memfault cloud
 - `setChunkCallback(callback)` - Set callback for received chunks
 - `getConfig()` - Get device configuration

@@ -19,8 +19,9 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <time.h>
-#include "memfault_hid/memfault_hid.h"
+#include "../src/memfault_hid_internal.h"  /* For device enumeration */
 #include "memfault_hid/mds_protocol.h"
+#include "memfault_hid/mds_protocol_internal.h"
 
 /* Global flag for clean shutdown */
 static volatile bool g_running = true;
@@ -167,32 +168,20 @@ static char* find_device_by_vid_pid(uint16_t vid, uint16_t pid) {
  * Monitor MDS stream
  */
 static int monitor_mds_stream(const char *path) {
-    memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
     monitor_stats_t stats = {0};
     int ret;
 
-    printf("\nOpening device: %s\n", path);
+    printf("\nOpening device and creating MDS session: %s\n", path);
 
-    /* Open HID device */
-    ret = memfault_hid_open_path(path, &device);
-    if (ret != MEMFAULT_HID_SUCCESS) {
-        fprintf(stderr, "Error: Failed to open device: %s\n",
-                memfault_hid_error_string(ret));
-        return ret;
-    }
-
-    printf("Device opened successfully!\n");
-
-    /* Create MDS session */
-    ret = mds_session_create(device, &session);
+    /* Create MDS session (opens HID device internally) */
+    ret = mds_session_create_hid_path(path, &session);
     if (ret < 0) {
         fprintf(stderr, "Error: Failed to create MDS session: %d\n", ret);
-        memfault_hid_close(device);
         return ret;
     }
 
-    printf("MDS session created.\n\n");
+    printf("MDS session created successfully!\n\n");
 
     /* Read device configuration */
     mds_device_config_t config = {0};
@@ -213,8 +202,7 @@ static int monitor_mds_stream(const char *path) {
     ret = mds_stream_enable(session);
     if (ret < 0) {
         fprintf(stderr, "Error: Failed to enable streaming: %d\n", ret);
-        mds_session_destroy(session);
-        memfault_hid_close(device);
+        mds_session_destroy(session);  /* Also closes HID device */
         return ret;
     }
 
@@ -286,8 +274,7 @@ static int monitor_mds_stream(const char *path) {
     /* Cleanup */
     printf("Disabling streaming...\n");
     mds_stream_disable(session);
-    mds_session_destroy(session);
-    memfault_hid_close(device);
+    mds_session_destroy(session);  /* Also closes HID device */
 
     return 0;
 }

@@ -6,7 +6,7 @@
  * including buffering, error recovery, and protocol helpers.
  */
 
-#include "memfault_hid/memfault_hid.h"
+#include "memfault_hid_internal.h"
 #include <string.h>
 
 /* Transport helpers can be added here for:

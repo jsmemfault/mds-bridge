@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(memfault_hid VERSION 1.0.0 LANGUAGES C)
+project(memfault_hid VERSION 2.0.0 LANGUAGES C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
@@ -30,6 +30,7 @@ set(MEMFAULT_HID_SOURCES
     src/memfault_hid.c
     src/memfault_hid_transport.c
     src/mds_protocol.c
+    src/mds_backend_hid.c
     src/chunks_uploader.c
 )
 
@@ -39,8 +40,8 @@ add_library(memfault_hid ${MEMFAULT_HID_SOURCES})
 # Set library properties
 set_target_properties(memfault_hid PROPERTIES
     VERSION ${PROJECT_VERSION}
-    SOVERSION 1
-    PUBLIC_HEADER include/memfault_hid/memfault_hid.h
+    SOVERSION 2
+    PUBLIC_HEADER "include/memfault_hid/mds_protocol.h;include/memfault_hid/mds_protocol_internal.h;include/memfault_hid/mds_backend.h;include/memfault_hid/chunks_uploader.h"
 )
 
 # Include directories

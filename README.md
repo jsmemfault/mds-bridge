@@ -1,30 +1,27 @@
 # Memfault HID Library
 
-A cross-platform C library for communicating with HID devices using custom report types. This library is designed to be integrated into desktop applications that may use other HID reports for additional device functionality.
+A cross-platform C library implementing the Memfault Diagnostic Service (MDS) protocol with pluggable backend support. The library provides a transport-agnostic protocol layer with built-in HID backend, enabling diagnostic data bridging from embedded devices to gateway applications.
 
 ## Features
 
+- **Transport-agnostic MDS protocol**: Pluggable backend architecture supports HID, Serial, BLE, and custom transports
 - **Cross-platform support**: Windows, macOS, and Linux
-- **Built on HIDAPI**: Reliable cross-platform HID communication
-- **Memfault Diagnostic Service (MDS)**: Built-in protocol for bridging diagnostic data over HID
+- **Built on HIDAPI**: Reliable cross-platform HID communication via built-in HID backend
 - **HTTP chunk uploader**: Built-in libcurl-based uploader for Memfault cloud integration
-- **Report filtering**: Configure which Report IDs the library handles
-- **Simple API**: Easy-to-use interface for HID communication
-- **Integration-friendly**: Designed to coexist with other HID functionality in applications
+- **Simple API**: Simplified session creation with automatic device management
 - **Pure C implementation**: Maximum compatibility and portability
 - **Comprehensive testing**: Full test suite with mocked dependencies (no hardware required)
 
 ## Architecture
 
-The library provides:
+The library is organized into layers:
 
-- Device enumeration and discovery
-- Opening/closing HID devices
-- Reading and writing Input/Output reports
-- Getting and setting Feature reports
-- Report ID filtering for selective report handling
-- Non-blocking I/O support
-- Comprehensive error handling
+- **MDS Protocol Layer**: Transport-agnostic implementation of the Memfault Diagnostic Service protocol
+- **Backend Interface**: Pluggable transport abstraction (READ/WRITE operations)
+- **HID Backend**: Built-in implementation using HIDAPI for USB HID devices
+- **Chunks Uploader**: HTTP uploader for Memfault cloud integration
+
+This architecture enables support for different transport mechanisms (Serial, BLE, WebSocket, etc.) by implementing the simple backend interface.
 
 ## Building
 
@@ -103,72 +100,21 @@ cmake -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON ..
 
 ## Usage
 
-### Basic Example
+### Quick Start - MDS Protocol over HID
+
+The primary use case is implementing the Memfault Diagnostic Service (MDS) protocol over USB HID. The library provides a simplified API that handles device management automatically.
 
 ```c
-#include "memfault_hid/memfault_hid.h"
-#include <stdio.h>
-
-int main(void) {
-    // Initialize the library
-    if (memfault_hid_init() != MEMFAULT_HID_SUCCESS) {
-        fprintf(stderr, "Failed to initialize HID library\n");
-        return 1;
-    }
-
-    // Open a device by VID/PID
-    memfault_hid_device_t *device = NULL;
-    int ret = memfault_hid_open(0x1234, 0x5678, NULL, &device);
-    if (ret != MEMFAULT_HID_SUCCESS) {
-        fprintf(stderr, "Failed to open device: %s\n",
-                memfault_hid_error_string(ret));
-        memfault_hid_exit();
-        return 1;
-    }
-
-    // Send a report
-    uint8_t data[32] = {0};
-    data[0] = 0x42; // Example data
-    ret = memfault_hid_write_report(device, 0x01, data, sizeof(data), 1000);
-    if (ret < 0) {
-        fprintf(stderr, "Write failed: %s\n", memfault_hid_error_string(ret));
-    }
-
-    // Read a report
-    uint8_t recv_data[64];
-    uint8_t report_id;
-    ret = memfault_hid_read_report(device, &report_id, recv_data,
-                                    sizeof(recv_data), 1000);
-    if (ret > 0) {
-        printf("Received %d bytes from report 0x%02X\n", ret, report_id);
-    }
-
-    // Cleanup
-    memfault_hid_close(device);
-    memfault_hid_exit();
-
-    return 0;
-}
-```
-
-### Memfault Diagnostic Service (MDS)
-
-The library includes built-in support for the Memfault Diagnostic Service protocol, which enables bridging diagnostic data from embedded devices over HID. This protocol is adapted from the Memfault BLE GATT service specification.
-
-```c
-#include "memfault_hid/memfault_hid.h"
 #include "memfault_hid/mds_protocol.h"
 
 int main(void) {
-    memfault_hid_init();
-
-    // Open device
-    memfault_hid_device_t *device = NULL;
-    memfault_hid_open(0x1234, 0x5678, NULL, &device);
-
-    // Create MDS session
+    // Create MDS session (opens HID device automatically)
     mds_session_t *session = NULL;
-    mds_session_create(device, &session);
+    int ret = mds_session_create_hid(0x1234, 0x5678, NULL, &session);
+    if (ret != 0) {
+        fprintf(stderr, "Failed to create MDS session\n");
+        return 1;
+    }
 
     // Read device configuration
     mds_device_config_t config;
@@ -203,10 +149,8 @@ int main(void) {
     // Disable streaming
     mds_stream_disable(session);
 
-    // Cleanup
+    // Cleanup (also closes HID device)
     mds_session_destroy(session);
-    memfault_hid_close(device);
-    memfault_hid_exit();
 
     return 0;
 }
@@ -233,8 +177,10 @@ Each stream packet includes:
 #### MDS API Functions
 
 **Session Management:**
-- `mds_session_create()` - Create MDS session over HID device
-- `mds_session_destroy()` - Destroy MDS session
+- `mds_session_create_hid()` - Create MDS session with HID backend (VID/PID)
+- `mds_session_create_hid_path()` - Create MDS session with HID backend (device path)
+- `mds_session_create()` - Create MDS session with custom backend (advanced)
+- `mds_session_destroy()` - Destroy MDS session (also closes device)
 
 **Device Configuration:**
 - `mds_read_device_config()` - Read all configuration

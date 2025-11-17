@@ -1,27 +1,30 @@
 /**
- * MDS Client - High-level wrapper for Memfault Diagnostic Service
+ * MDS Client - Using Custom Node HID Backend
  *
- * This class provides a JavaScript API for the MDS protocol, using Node-HID
- * for HID I/O and the C library (via FFI) for protocol logic.
+ * This demonstrates the pluggable backend architecture by creating
+ * a custom backend that bridges node-hid with the MDS C library. This approach:
+ *
+ * 1. Creates a NodeHIDBackend that implements the backend interface
+ * 2. Registers it with the C library via FFI callbacks
+ * 3. Uses high-level MDS API functions instead of buffer-based parsing
+ * 4. Demonstrates transport-agnostic protocol design
  */
 
 import {
   lib,
   ref,
-  voidPtr,
   mds_session_ptr,
   mds_stream_packet_t,
+  mds_device_config_t,
   MDS_REPORT_ID,
-  MDS_STREAM_MODE,
   MDS_MAX_DEVICE_ID_LEN,
   MDS_MAX_URI_LEN,
   MDS_MAX_AUTH_LEN,
-  MDS_MAX_CHUNK_DATA_LEN,
-  MDS_SEQUENCE_MAX,
 } from './bindings.js';
+import { NodeHIDBackend } from './node-hid-backend.js';
 
 /**
- * MDS Client for managing diagnostic data streaming
+ * MDS Client - Using pluggable backend architecture
  */
 export class MDSClient {
   /**
@@ -29,6 +32,7 @@ export class MDSClient {
    */
   constructor(hidDevice) {
     this.device = hidDevice;
+    this.backend = null;
     this.session = null;
     this.config = null;
     this.streaming = false;
@@ -36,127 +40,172 @@ export class MDSClient {
   }
 
   /**
-   * Initialize the MDS session
+   * Initialize the MDS session with custom backend
    */
   async initialize() {
-    // Create MDS session (without HID device handle - we manage that in JS)
+    console.log('[MDSClient] Creating Node HID backend...');
+
+    // Create custom backend using node-hid
+    this.backend = new NodeHIDBackend(this.device);
+
+    // Create MDS session with our custom backend
     const sessionPtr = ref.alloc(mds_session_ptr);
-    const result = lib.mds_session_create(voidPtr.NULL, sessionPtr);
+    const result = lib.mds_session_create(this.backend.getBackendRef(), sessionPtr);
 
     if (result < 0) {
       throw new Error(`Failed to create MDS session: ${result}`);
     }
 
     this.session = sessionPtr.deref();
+    console.log('[MDSClient] MDS session created successfully');
 
-    // Read device configuration
+    // Read device configuration using high-level API
     await this.readDeviceConfig();
   }
 
   /**
-   * Read device configuration from the device
+   * Read device configuration using high-level C API
+   *
+   * This demonstrates the benefit of the backend architecture:
+   * - No manual buffer parsing needed
+   * - No manual HID feature report reads
+   * - The C library handles all the protocol details
    */
   async readDeviceConfig() {
-    const config = {};
+    console.log('[MDSClient] Reading device configuration...');
 
-    // Read supported features (Feature Report 0x01)
-    const featuresData = this.device.getFeatureReport(MDS_REPORT_ID.SUPPORTED_FEATURES, 4);
-    const featuresBuffer = Buffer.from(featuresData.slice(1)); // Skip report ID
-    const featuresPtr = ref.alloc(ref.types.uint32);
-    lib.mds_parse_supported_features(featuresBuffer, featuresBuffer.length, featuresPtr);
-    config.supportedFeatures = featuresPtr.deref();
-
-    // Read device identifier (Feature Report 0x02)
-    const deviceIdData = this.device.getFeatureReport(MDS_REPORT_ID.DEVICE_IDENTIFIER, MDS_MAX_DEVICE_ID_LEN);
-    const deviceIdBuffer = Buffer.from(deviceIdData.slice(1)); // Skip report ID
-    const deviceIdStr = Buffer.alloc(MDS_MAX_DEVICE_ID_LEN);
-    lib.mds_parse_device_identifier(deviceIdBuffer, deviceIdBuffer.length, deviceIdStr, MDS_MAX_DEVICE_ID_LEN);
-    config.deviceIdentifier = deviceIdStr.toString('utf8').replace(/\0.*$/g, '');
-
-    // Read data URI (Feature Report 0x03)
-    const uriData = this.device.getFeatureReport(MDS_REPORT_ID.DATA_URI, MDS_MAX_URI_LEN);
-    const uriBuffer = Buffer.from(uriData.slice(1)); // Skip report ID
-    const uriStr = Buffer.alloc(MDS_MAX_URI_LEN);
-    lib.mds_parse_data_uri(uriBuffer, uriBuffer.length, uriStr, MDS_MAX_URI_LEN);
-    config.dataUri = uriStr.toString('utf8').replace(/\0.*$/g, '');
-
-    // Read authorization (Feature Report 0x04)
-    const authData = this.device.getFeatureReport(MDS_REPORT_ID.AUTHORIZATION, MDS_MAX_AUTH_LEN);
-    const authBuffer = Buffer.from(authData.slice(1)); // Skip report ID
-    const authStr = Buffer.alloc(MDS_MAX_AUTH_LEN);
-    lib.mds_parse_authorization(authBuffer, authBuffer.length, authStr, MDS_MAX_AUTH_LEN);
-    config.authorization = authStr.toString('utf8').replace(/\0.*$/g, '');
-
-    this.config = config;
-    return config;
-  }
-
-  /**
-   * Enable diagnostic data streaming
-   */
-  async enableStreaming() {
-    const buffer = Buffer.alloc(1);
-    const bytesWritten = lib.mds_build_stream_control(true, buffer, buffer.length);
-
-    if (bytesWritten < 0) {
-      throw new Error(`Failed to build stream control: ${bytesWritten}`);
-    }
-
-    // Send output report (Report ID 0x05)
-    const report = Buffer.concat([Buffer.from([MDS_REPORT_ID.STREAM_CONTROL]), buffer]);
-    this.device.write(Array.from(report));
-
-    this.streaming = true;
-  }
-
-  /**
-   * Disable diagnostic data streaming
-   */
-  async disableStreaming() {
-    const buffer = Buffer.alloc(1);
-    const bytesWritten = lib.mds_build_stream_control(false, buffer, buffer.length);
-
-    if (bytesWritten < 0) {
-      throw new Error(`Failed to build stream control: ${bytesWritten}`);
-    }
-
-    // Send output report (Report ID 0x05)
-    const report = Buffer.concat([Buffer.from([MDS_REPORT_ID.STREAM_CONTROL]), buffer]);
-    this.device.write(Array.from(report));
-
-    this.streaming = false;
-  }
-
-  /**
-   * Process incoming HID data
-   * Call this when you receive data from the HID device
-   *
-   * @param {Buffer} data - Raw HID input report data (including report ID)
-   */
-  processHIDData(data) {
-    const reportId = data[0];
-
-    // Only process MDS stream data reports
-    if (reportId !== MDS_REPORT_ID.STREAM_DATA) {
-      return null;
-    }
-
-    // Parse the stream packet
-    const packetBuffer = data.slice(1); // Remove report ID
-    const packet = new mds_stream_packet_t();
-    const result = lib.mds_parse_stream_packet(packetBuffer, packetBuffer.length, packet.ref());
+    // Use high-level API - the C library will call our backend for HID operations
+    const config = new mds_device_config_t();
+    const result = lib.mds_read_device_config(this.session, config.ref());
 
     if (result < 0) {
-      console.error(`Failed to parse stream packet: ${result}`);
-      return null;
+      throw new Error(`Failed to read device config: ${result}`);
     }
 
-    // Validate sequence number
+    // Extract configuration from struct
+    this.config = {
+      supportedFeatures: config.supported_features,
+      deviceIdentifier: ref.readCString(config.device_identifier.buffer, 0),
+      dataUri: ref.readCString(config.data_uri.buffer, 0),
+      authorization: ref.readCString(config.authorization.buffer, 0),
+    };
+
+    console.log('[MDSClient] Device configuration:');
+    console.log(`  Device ID: ${this.config.deviceIdentifier}`);
+    console.log(`  Data URI: ${this.config.dataUri}`);
+    console.log(`  Auth: ${this.config.authorization}`);
+    console.log(`  Features: 0x${this.config.supportedFeatures.toString(16)}`);
+
+    return this.config;
+  }
+
+  /**
+   * Enable diagnostic data streaming using high-level API
+   */
+  async enableStreaming() {
+    console.log('[MDSClient] Enabling streaming...');
+
+    // Use high-level API - no need to manually build control packets
+    const result = lib.mds_stream_enable(this.session);
+
+    if (result < 0) {
+      throw new Error(`Failed to enable streaming: ${result}`);
+    }
+
+    this.streaming = true;
+    console.log('[MDSClient] Streaming enabled');
+  }
+
+  /**
+   * Disable diagnostic data streaming using high-level API
+   */
+  async disableStreaming() {
+    console.log('[MDSClient] Disabling streaming...');
+
+    const result = lib.mds_stream_disable(this.session);
+
+    if (result < 0) {
+      throw new Error(`Failed to disable streaming: ${result}`);
+    }
+
+    this.streaming = false;
+    console.log('[MDSClient] Streaming disabled');
+  }
+
+  /**
+   * Process transport data packet
+   *
+   * Call this for every packet received from your transport layer
+   * (HID report, Serial frame, BLE notification, etc.).
+   *
+   * For multiplexed transports (HID, Serial):
+   *   - Expects data[0] to be channel ID (report ID / framing byte)
+   *   - data[1:] is payload
+   *
+   * For pre-demultiplexed transports (BLE):
+   *   - Use processStreamData() instead
+   *
+   * @param {Buffer} data - Raw packet data from transport (including channel ID)
+   * @returns {boolean} True if this was MDS stream data (handled internally),
+   *                    False if this should be handled by application
+   */
+  process(data) {
+    if (!data || data.length < 1) {
+      return false;
+    }
+
+    const channelId = data[0];
+
+    // Only process MDS stream data channel (0x06)
+    if (channelId !== 0x06) { // MDS_REPORT_ID_STREAM_DATA
+      return false;
+    }
+
+    // Process the stream data payload
+    const payload = data.slice(1);
+    this._processStreamPayload(payload);
+    return true;
+  }
+
+  /**
+   * Process MDS stream data payload directly
+   *
+   * Use this for transports that pre-demultiplex channels (e.g., BLE GATT
+   * characteristics). When you receive data from the MDS stream characteristic,
+   * call this method directly.
+   *
+   * @param {Buffer} payload - MDS stream packet payload (without channel ID prefix)
+   */
+  processStreamData(payload) {
+    this._processStreamPayload(payload);
+  }
+
+  /**
+   * Internal method to process MDS stream packet payload
+   * @private
+   * @param {Buffer} payload - Stream packet payload (sequence + data)
+   */
+  _processStreamPayload(payload) {
+    if (!payload || payload.length === 0) {
+      return;
+    }
+
+    // Parse the stream packet using buffer-based API
+    // (We can't use mds_stream_read_packet here because it would block)
+    const packet = new mds_stream_packet_t();
+    const result = lib.mds_parse_stream_packet(payload, payload.length, packet.ref());
+
+    if (result < 0) {
+      console.error(`[MDSClient] Failed to parse stream packet: ${result}`);
+      return;
+    }
+
+    // Validate sequence using C library
     const lastSeq = lib.mds_get_last_sequence(this.session);
-    if (lastSeq !== MDS_SEQUENCE_MAX) {
+    if (lastSeq !== 31) { // MDS_SEQUENCE_MAX
       const isValid = lib.mds_validate_sequence(lastSeq, packet.sequence);
       if (!isValid) {
-        console.warn(`Sequence validation failed: expected ${(lastSeq + 1) & 0x1F}, got ${packet.sequence}`);
+        console.warn(`[MDSClient] Sequence error: expected ${(lastSeq + 1) & 0x1F}, got ${packet.sequence}`);
       }
     }
 
@@ -166,6 +215,8 @@ export class MDSClient {
     // Extract chunk data
     const chunkData = Buffer.from(packet.data.buffer.slice(0, packet.data_len));
 
+    console.log(`[MDSClient] Received chunk: seq=${packet.sequence}, len=${packet.data_len}`);
+
     // Trigger callback if registered
     if (this.onChunk) {
       this.onChunk({
@@ -174,12 +225,6 @@ export class MDSClient {
         length: packet.data_len,
       });
     }
-
-    return {
-      sequence: packet.sequence,
-      data: chunkData,
-      length: packet.data_len,
-    };
   }
 
   /**
@@ -210,9 +255,10 @@ export class MDSClient {
         throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
       }
 
+      console.log(`[MDSClient] Chunk uploaded: ${chunkData.length} bytes`);
       return true;
     } catch (error) {
-      console.error('Failed to upload chunk:', error);
+      console.error('[MDSClient] Failed to upload chunk:', error);
       return false;
     }
   }
@@ -230,9 +276,18 @@ export class MDSClient {
    * Clean up resources
    */
   destroy() {
+    if (this.streaming) {
+      this.disableStreaming().catch(console.error);
+    }
+
     if (this.session) {
       lib.mds_session_destroy(this.session);
       this.session = null;
+    }
+
+    if (this.backend) {
+      this.backend.destroy();
+      this.backend = null;
     }
   }
 

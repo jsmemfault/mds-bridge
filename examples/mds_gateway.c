@@ -16,7 +16,6 @@
  *   ./mds_gateway 1234 5678 --dry-run    # Print chunks without uploading
  */
 
-#include "memfault_hid/memfault_hid.h"
 #include "memfault_hid/mds_protocol.h"
 #include "memfault_hid/chunks_uploader.h"
 
@@ -62,7 +61,6 @@ static int dry_run_callback(const char *uri,
 int main(int argc, char *argv[]) {
     int ret;
     unsigned int vid, pid;
-    memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
     mds_device_config_t config;
     chunks_uploader_t *uploader = NULL;
@@ -104,31 +102,14 @@ int main(int argc, char *argv[]) {
     printf("Memfault MDS Gateway\n");
     printf("=========================================\n\n");
 
-    /* Initialize library */
-    printf("Initializing HID library...\n");
-    ret = memfault_hid_init();
-    if (ret != MEMFAULT_HID_SUCCESS) {
-        fprintf(stderr, "Failed to initialize: %s\n", memfault_hid_error_string(ret));
-        return 1;
-    }
-
-    /* Open device */
-    printf("Opening device %04X:%04X...\n", vid, pid);
-    ret = memfault_hid_open(vid, pid, NULL, &device);
-    if (ret != MEMFAULT_HID_SUCCESS) {
-        fprintf(stderr, "Failed to open device: %s\n", memfault_hid_error_string(ret));
-        memfault_hid_exit();
-        return 1;
-    }
-    printf("Device opened successfully\n\n");
-
-    /* Create MDS session */
-    printf("Creating MDS session...\n");
-    ret = mds_session_create(device, &session);
+    /* Create MDS session (opens HID device internally) */
+    printf("Opening device %04X:%04X and creating MDS session...\n", vid, pid);
+    ret = mds_session_create_hid(vid, pid, NULL, &session);
     if (ret != 0) {
-        fprintf(stderr, "Failed to create MDS session\n");
-        goto cleanup;
+        fprintf(stderr, "Failed to create MDS session: error %d\n", ret);
+        return 1;
     }
+    printf("MDS session created successfully\n\n");
 
     /* Read device configuration */
     printf("Reading device configuration...\n");
@@ -248,14 +229,8 @@ cleanup:
 
     /* Cleanup */
     if (session) {
-        mds_session_destroy(session);
+        mds_session_destroy(session);  /* Also closes HID device */
     }
-
-    if (device) {
-        memfault_hid_close(device);
-    }
-
-    memfault_hid_exit();
 
     printf("Gateway stopped\n");
     return 0;

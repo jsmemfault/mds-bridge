@@ -1,28 +1,29 @@
 # Python MDS Example
 
-This example demonstrates how to use the Memfault HID library from Python using ctypes (Python's built-in FFI). It shows how to run MDS (Memfault Diagnostic Service) streaming in parallel with custom HID application logic.
+This example demonstrates how to use the Memfault Diagnostic Service (MDS) protocol with a custom backend using Python's ctypes FFI.
 
 ## Architecture
 
-The example uses a hybrid approach:
+This example implements the pluggable backend architecture:
 
-- **hidapi (Python)**: Handles all actual HID I/O (reading/writing reports)
-- **C Library (via ctypes)**: Provides MDS protocol logic (parsing, validation, sequence tracking)
-- **Python**: Application logic and orchestration
+- **hidapi**: Wrapped in a custom backend class
+- **C Library**: Calls back to Python for HID I/O operations
+- **Python**: Implements backend interface, uses high-level MDS API
 
-This architecture allows you to:
-
-1. Use Python's native HID libraries and ecosystem
-2. Leverage the robust C implementation of MDS protocol
-3. Run MDS streaming alongside your custom HID application
-4. Avoid re-implementing the MDS protocol in Python
+**Benefits:**
+- Cleaner, simpler code
+- Transport-agnostic design (works with HID, Serial, BLE, etc.)
+- No manual buffer management or protocol details exposed
+- Uses high-level MDS API
+- Demonstrates pluggable architecture
 
 ## Files
 
 - `requirements.txt` - Python dependencies
-- `bindings.py` - Low-level ctypes bindings to the C library
-- `mds_client.py` - High-level MDS client wrapper
-- `main.py` - Example application showing parallel HID usage
+- `bindings.py` - ctypes bindings to the C library
+- `hid_backend.py` - Custom backend implementing MDS backend interface
+- `mds_client.py` - MDS client using custom backend
+- `main.py` - Example application
 - `README.md` - This file
 
 ## Prerequisites
@@ -86,71 +87,105 @@ The application will:
 2. Initialize the MDS client
 3. Read device configuration (device ID, URI, auth)
 4. Enable diagnostic data streaming
-5. Process incoming data:
-   - Route MDS stream data to the MDS client
-   - Route custom reports to your application logic
+5. Process incoming transport data:
+   - MDS client automatically handles MDS protocol data
+   - Custom reports are passed to your application logic
 6. Optionally upload chunks to Memfault cloud
 
 Press `Ctrl+C` to stop gracefully.
 
 ## How It Works
 
-### 1. HID I/O with hidapi
+### 1. Custom Backend Implementation
 
-All HID communication is handled by the Python `hid` library:
+The `HIDBackend` class implements the MDS backend interface using hidapi:
 
 ```python
-import hid
+class HIDBackend:
+    def __init__(self, hid_device):
+        self.device = hid_device
 
-# Open device
-device = hid.device()
-device.open_path(device_path)
+        # Create callbacks that the C library will invoke for HID I/O
+        @BACKEND_READ_FN
+        def read_callback(impl_data, report_id, buffer, length, timeout_ms):
+            return self._handle_read(report_id, buffer, length, timeout_ms)
 
-# Read feature reports
-data = device.get_feature_report(report_id, length)
+        @BACKEND_WRITE_FN
+        def write_callback(impl_data, report_id, buffer, length):
+            return self._handle_write(report_id, buffer, length)
 
-# Write output reports
-device.write([report_id, ...data])
+        # Create backend structure with operations
+        self.backend = mds_backend_t()
+        self.backend.ops = ctypes.pointer(mds_backend_ops_t(
+            read=read_callback,
+            write=write_callback,
+            destroy=destroy_callback
+        ))
 
-# Read input reports (non-blocking)
+    def _handle_read(self, report_id, buffer, length, timeout_ms):
+        # Feature reports (0x01-0x05)
+        data = self.device.get_feature_report(report_id, length + 1)
+        for i in range(len(data) - 1):
+            buffer[i] = data[i + 1]  # Copy to C buffer
+        return len(data) - 1
+
+    def _handle_write(self, report_id, buffer, length):
+        # Write feature reports
+        data = bytes([buffer[i] for i in range(length)])
+        self.device.write([report_id] + list(data))
+        return length
+```
+
+### 2. MDS Session with Custom Backend
+
+The MDS client creates a session using the custom backend:
+
+```python
+backend = HIDBackend(device)
+session_ptr = ctypes.c_void_p()
+lib.mds_session_create(backend.get_backend_ref(), ctypes.byref(session_ptr))
+session = session_ptr
+
+# Use high-level API - C library calls our backend for HID I/O
+config = mds_device_config_t()
+lib.mds_read_device_config(session, ctypes.byref(config))
+
+# Enable streaming
+lib.mds_stream_enable(session)
+```
+
+### 3. Processing Transport Data (Transport-Agnostic API)
+
+The MDS client provides a clean, transport-agnostic API for processing data:
+
+```python
+# Set up chunk callback
+def on_chunk(packet):
+    print(f"Received chunk: seq={packet.sequence}, len={packet.length} bytes")
+    mds_client.upload_chunk(packet.data)
+
+mds_client.set_chunk_callback(on_chunk)
+
+# Process incoming data
 device.set_nonblocking(True)
-data = device.read(64, timeout_ms=100)
+while True:
+    data = device.read(64)
+    if data:
+        # Let MDS process first - returns True if it handled the data
+        if mds_client.process(bytes(data)):
+            continue  # MDS handled it internally
+
+        # Not MDS data - handle as custom report
+        handle_custom_report(data)
 ```
 
-### 2. MDS Protocol via C Library
+**For multiplexed transports (HID, Serial):**
+- Use `process(data)` where `data[0]` is the channel/report ID
+- Returns `True` if MDS handled it, `False` if it's for your application
 
-The C library handles protocol logic through ctypes:
-
-```python
-import ctypes
-from bindings import lib, mds_stream_packet_t
-
-# Parse a stream packet
-packet = mds_stream_packet_t()
-lib.mds_parse_stream_packet(buffer, length, ctypes.byref(packet))
-
-# Validate sequence numbers
-is_valid = lib.mds_validate_sequence(prev_seq, new_seq)
-
-# Build stream control reports
-buffer = (ctypes.c_uint8 * 1)()
-lib.mds_build_stream_control(True, buffer, 1)
-```
-
-### 3. Parallel Operation
-
-The application routes HID reports to the appropriate handler:
-
-```python
-def handle_hid_data(self, data: bytes) -> None:
-    # Custom application reports
-    handled = self.custom_app.process_custom_report(data)
-    if handled:
-        return
-
-    # MDS stream data
-    self.mds_client.process_hid_data(data)
-```
+**For pre-demultiplexed transports (BLE GATT characteristics):**
+- Use `process_stream_data(payload)` when receiving from the MDS characteristic
+- No channel ID prefix needed (characteristic UUID already identifies it as MDS data)
 
 ## Example Output
 
@@ -186,42 +221,93 @@ Application running. Press Ctrl+C to exit.
 
 To use MDS in your existing Python HID application:
 
-1. **Add the bindings and MDS client:**
-   - Copy `bindings.py` and `mds_client.py` to your project
+1. **Add the required files to your project:**
+   - Copy `bindings.py`, `hid_backend.py`, and `mds_client.py` to your project
    - Install dependencies: `pip install hidapi requests`
 
 2. **Create an MDS client instance:**
    ```python
+   import hid
    from mds_client import MDSClient
 
-   mds_client = MDSClient(your_hid_device)
+   device = hid.device()
+   device.open_path(device_path)
+
+   mds_client = MDSClient(device)
    mds_client.initialize()
    ```
 
-3. **Enable streaming:**
-   ```python
-   mds_client.enable_streaming()
-   ```
-
-4. **Route MDS reports in your data handler:**
-   ```python
-   from bindings import MDS_REPORT_ID
-
-   data = your_hid_device.read(64)
-   if data and data[0] == MDS_REPORT_ID.STREAM_DATA:
-       mds_client.process_hid_data(bytes(data))
-   else:
-       # Your custom application logic
-       handle_custom_report(data)
-   ```
-
-5. **Handle received chunks:**
+3. **Set up chunk callback:**
    ```python
    def on_chunk(packet):
        print(f"Received chunk: {packet.length} bytes")
        mds_client.upload_chunk(packet.data)
 
    mds_client.set_chunk_callback(on_chunk)
+   ```
+
+4. **Enable streaming:**
+   ```python
+   mds_client.enable_streaming()
+   ```
+
+5. **Process incoming transport data:**
+   ```python
+   device.set_nonblocking(True)
+   while True:
+       data = device.read(64)
+       if data:
+           # Let MDS process first - returns True if it handled the data
+           if mds_client.process(bytes(data)):
+               continue  # MDS handled it internally
+
+           # Not MDS data - handle as custom report
+           handle_custom_report(data)
+   ```
+
+## Creating Custom Backends
+
+You can implement backends for other transports (Serial, BLE, etc.) by following the same pattern:
+
+1. **Implement the backend interface:**
+   ```python
+   class CustomBackend:
+       def __init__(self, transport):
+           self.transport = transport
+
+           # Create read/write callbacks
+           @BACKEND_READ_FN
+           def read_callback(impl_data, report_id, buffer, length, timeout_ms):
+               # Read from your transport
+               data = self.transport.read(report_id, length)
+               for i in range(len(data)):
+                   buffer[i] = data[i]
+               return len(data)
+
+           @BACKEND_WRITE_FN
+           def write_callback(impl_data, report_id, buffer, length):
+               # Write to your transport
+               data = bytes([buffer[i] for i in range(length)])
+               self.transport.write(report_id, data)
+               return length
+
+           # Create backend structure
+           self.backend = mds_backend_t()
+           self.backend.ops = ctypes.pointer(mds_backend_ops_t(
+               read=read_callback,
+               write=write_callback,
+               destroy=destroy_callback
+           ))
+
+       def get_backend_ref(self):
+           return ctypes.byref(self.backend)
+   ```
+
+2. **Use it with MDS:**
+   ```python
+   backend = CustomBackend(my_transport)
+   session_ptr = ctypes.c_void_p()
+   lib.mds_session_create(backend.get_backend_ref(), ctypes.byref(session_ptr))
    ```
 
 ## API Reference
@@ -239,7 +325,8 @@ MDSClient(hid_device)
 - `read_device_config() -> DeviceConfig` - Read device configuration from device
 - `enable_streaming()` - Enable diagnostic data streaming
 - `disable_streaming()` - Disable streaming
-- `process_hid_data(data: bytes) -> Optional[StreamPacket]` - Process incoming HID input report
+- `process(data: bytes) -> bool` - Process transport data (multiplexed transports like HID/Serial)
+- `process_stream_data(payload: bytes)` - Process MDS stream payload (pre-demultiplexed transports like BLE)
 - `upload_chunk(chunk_data: bytes) -> bool` - Upload chunk data to Memfault cloud
 - `set_chunk_callback(callback: Callable)` - Set callback for received chunks
 - `get_config() -> DeviceConfig` - Get device configuration

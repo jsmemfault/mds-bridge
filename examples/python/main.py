@@ -18,7 +18,6 @@ from typing import Optional
 from dataclasses import dataclass
 
 from mds_client import MDSClient, StreamPacket
-from bindings import MDS_REPORT_ID
 
 
 # Configuration - Update these values for your device
@@ -59,10 +58,6 @@ class CustomHIDApp:
             return False
 
         report_id = data[0]
-
-        # Ignore MDS reports - let MDSClient handle those
-        if report_id == MDS_REPORT_ID.STREAM_DATA:
-            return False
 
         # Handle your custom reports here
         # For this example, we'll just log them
@@ -157,16 +152,16 @@ class Application:
     def handle_hid_data(self, data: bytes) -> None:
         """
         Handle incoming HID data
-        Routes data to either custom app or MDS client
+        Routes data to either MDS client or custom app
         """
-        # Try custom app first
+        # Let MDS process first - returns True if it handled the data
+        if self.mds_client.process(data):
+            return  # MDS handled it
+
+        # Not MDS data - handle as custom report
         handled = self.custom_app.process_custom_report(data)
         if handled:
             self.stats['custom_reports'] += 1
-            return
-
-        # Let MDS client handle it
-        self.mds_client.process_hid_data(data)
 
     def start(self) -> None:
         """Start the application"""

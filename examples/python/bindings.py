@@ -1,8 +1,13 @@
 """
 FFI bindings for Memfault HID library
 
-This module provides low-level bindings to the memfault_hid C library
-using ctypes. It exposes the buffer-based MDS protocol API.
+This module provides ctypes bindings to the memfault_hid C library.
+
+It includes both:
+- Public high-level MDS API (from mds_protocol.h)
+- Internal buffer-based parsing API (from mds_protocol_internal.h)
+
+The internal APIs are used for event-driven I/O integration with hidapi.
 """
 
 import ctypes
@@ -88,6 +93,44 @@ class mds_stream_packet_t(ctypes.Structure):
         ('data_len', ctypes.c_size_t),
     ]
 
+# Backend callback function types
+BACKEND_READ_FN = ctypes.CFUNCTYPE(
+    ctypes.c_int,  # return type
+    ctypes.c_void_p,  # impl_data
+    ctypes.c_uint8,  # report_id
+    ctypes.POINTER(ctypes.c_uint8),  # buffer
+    ctypes.c_size_t,  # length
+    ctypes.c_int  # timeout_ms
+)
+
+BACKEND_WRITE_FN = ctypes.CFUNCTYPE(
+    ctypes.c_int,  # return type
+    ctypes.c_void_p,  # impl_data
+    ctypes.c_uint8,  # report_id
+    ctypes.POINTER(ctypes.c_uint8),  # buffer
+    ctypes.c_size_t  # length
+)
+
+BACKEND_DESTROY_FN = ctypes.CFUNCTYPE(
+    None,  # return type
+    ctypes.c_void_p  # impl_data
+)
+
+class mds_backend_ops_t(ctypes.Structure):
+    """Backend operations vtable"""
+    _fields_ = [
+        ('read', BACKEND_READ_FN),
+        ('write', BACKEND_WRITE_FN),
+        ('destroy', BACKEND_DESTROY_FN),
+    ]
+
+class mds_backend_t(ctypes.Structure):
+    """Backend structure"""
+    _fields_ = [
+        ('ops', ctypes.POINTER(mds_backend_ops_t)),
+        ('impl_data', ctypes.c_void_p),
+    ]
+
 # Load the library
 _lib_path = get_library_path()
 print(f"Loading Memfault HID library from: {_lib_path}")
@@ -95,52 +138,43 @@ lib = ctypes.CDLL(_lib_path)
 
 # Function signatures
 
-# Session management
-lib.mds_session_create.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+# Session management - HIGH-LEVEL API
+lib.mds_session_create.argtypes = [ctypes.POINTER(mds_backend_t), ctypes.POINTER(ctypes.c_void_p)]
 lib.mds_session_create.restype = ctypes.c_int
+
+lib.mds_session_create_hid.argtypes = [
+    ctypes.c_uint16,  # vendor_id
+    ctypes.c_uint16,  # product_id
+    ctypes.c_void_p,  # serial_number (wchar_t*)
+    ctypes.POINTER(ctypes.c_void_p)  # session
+]
+lib.mds_session_create_hid.restype = ctypes.c_int
 
 lib.mds_session_destroy.argtypes = [ctypes.c_void_p]
 lib.mds_session_destroy.restype = None
 
-# Buffer-based parsing functions
-lib.mds_parse_supported_features.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t,
-    ctypes.POINTER(ctypes.c_uint32)
+# Device configuration - HIGH-LEVEL API
+lib.mds_read_device_config.argtypes = [
+    ctypes.c_void_p,  # session
+    ctypes.POINTER(mds_device_config_t)  # config
 ]
-lib.mds_parse_supported_features.restype = ctypes.c_int
+lib.mds_read_device_config.restype = ctypes.c_int
 
-lib.mds_parse_device_identifier.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t,
-    ctypes.c_char_p,
-    ctypes.c_size_t
+# Stream control - HIGH-LEVEL API
+lib.mds_stream_enable.argtypes = [ctypes.c_void_p]  # session
+lib.mds_stream_enable.restype = ctypes.c_int
+
+lib.mds_stream_disable.argtypes = [ctypes.c_void_p]  # session
+lib.mds_stream_disable.restype = ctypes.c_int
+
+lib.mds_stream_read_packet.argtypes = [
+    ctypes.c_void_p,  # session
+    ctypes.POINTER(mds_stream_packet_t),  # packet
+    ctypes.c_int  # timeout_ms
 ]
-lib.mds_parse_device_identifier.restype = ctypes.c_int
+lib.mds_stream_read_packet.restype = ctypes.c_int
 
-lib.mds_parse_data_uri.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t,
-    ctypes.c_char_p,
-    ctypes.c_size_t
-]
-lib.mds_parse_data_uri.restype = ctypes.c_int
-
-lib.mds_parse_authorization.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t,
-    ctypes.c_char_p,
-    ctypes.c_size_t
-]
-lib.mds_parse_authorization.restype = ctypes.c_int
-
-lib.mds_build_stream_control.argtypes = [
-    ctypes.c_bool,
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t
-]
-lib.mds_build_stream_control.restype = ctypes.c_int
-
+# Buffer-based parsing functions (for async stream data)
 lib.mds_parse_stream_packet.argtypes = [
     ctypes.POINTER(ctypes.c_uint8),
     ctypes.c_size_t,

@@ -6,7 +6,7 @@
  * without needing the full HID implementation.
  */
 
-#include "memfault_hid/memfault_hid.h"
+#include "../src/memfault_hid_internal.h"
 #include <errno.h>
 
 /* Stub implementations - these should never be called in upload-only tests */
@@ -56,4 +56,25 @@ int memfault_hid_set_feature_report(memfault_hid_device_t *device, uint8_t repor
     (void)data;
     (void)length;
     return -ENOSYS;  /* Not implemented */
+}
+
+int memfault_hid_open(uint16_t vendor_id, uint16_t product_id,
+                       const wchar_t *serial_number,
+                       memfault_hid_device_t **device) {
+    (void)vendor_id;
+    (void)product_id;
+    (void)serial_number;
+    (void)device;
+    return -ENOSYS;  /* Not implemented */
+}
+
+int memfault_hid_open_path(const char *path, memfault_hid_device_t **device) {
+    (void)path;
+    (void)device;
+    return -ENOSYS;  /* Not implemented */
+}
+
+void memfault_hid_close(memfault_hid_device_t *device) {
+    (void)device;
+    /* Not implemented */
 }

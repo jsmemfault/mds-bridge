@@ -1,8 +1,13 @@
 /**
  * FFI bindings for Memfault HID library
  *
- * This module provides low-level bindings to the memfault_hid C library
- * using ffi-napi. It exposes the buffer-based MDS protocol API.
+ * This module provides ffi-napi bindings to the memfault_hid C library.
+ *
+ * It includes both:
+ * - Public high-level MDS API (from mds_protocol.h)
+ * - Internal buffer-based parsing API (from mds_protocol_internal.h)
+ *
+ * The internal APIs are used for event-driven I/O integration with node-hid.
  */
 
 import ffi from 'ffi-napi';
@@ -80,22 +85,48 @@ export const mds_stream_packet_t = StructType({
 // Opaque pointer types
 const mds_session_ptr = ref.refType(ref.types.void);
 const mds_session_ptr_ptr = ref.refType(mds_session_ptr);
+const mds_backend_ptr = ref.refType(ref.types.void);
+
+// Backend callback function types
+const backend_read_fn = ffi.Function(int, [voidPtr, uint8_t, ref.refType(uint8_t), size_t, int]);
+const backend_write_fn = ffi.Function(int, [voidPtr, uint8_t, ref.refType(uint8_t), size_t]);
+const backend_destroy_fn = ffi.Function('void', [voidPtr]);
+
+// Backend operations structure
+export const mds_backend_ops_t = StructType({
+  read: backend_read_fn,
+  write: backend_write_fn,
+  destroy: backend_destroy_fn,
+});
+
+// Backend structure
+export const mds_backend_t = StructType({
+  ops: ref.refType(mds_backend_ops_t),
+  impl_data: voidPtr,
+});
 
 // Load the library
 const libraryPath = getLibraryPath();
 console.log(`Loading Memfault HID library from: ${libraryPath}`);
 
 export const lib = ffi.Library(libraryPath, {
-  // Session management
-  'mds_session_create': [int, [voidPtr, mds_session_ptr_ptr]],
+  // Session management - NEW API
+  'mds_session_create': [int, [ref.refType(mds_backend_t), mds_session_ptr_ptr]],
+  'mds_session_create_hid': [int, [ref.types.uint16, ref.types.uint16, voidPtr, mds_session_ptr_ptr]],
   'mds_session_destroy': ['void', [mds_session_ptr]],
 
-  // Buffer-based parsing functions
-  'mds_parse_supported_features': [int, [ref.refType(uint8_t), size_t, ref.refType(uint32_t)]],
-  'mds_parse_device_identifier': [int, [ref.refType(uint8_t), size_t, 'string', size_t]],
-  'mds_parse_data_uri': [int, [ref.refType(uint8_t), size_t, 'string', size_t]],
-  'mds_parse_authorization': [int, [ref.refType(uint8_t), size_t, 'string', size_t]],
-  'mds_build_stream_control': [int, [bool, ref.refType(uint8_t), size_t]],
+  // Device configuration - HIGH-LEVEL API
+  'mds_read_device_config': [int, [mds_session_ptr, ref.refType(mds_device_config_t)]],
+  'mds_get_device_identifier': [int, [mds_session_ptr, 'string', size_t]],
+  'mds_get_data_uri': [int, [mds_session_ptr, 'string', size_t]],
+  'mds_get_authorization': [int, [mds_session_ptr, 'string', size_t]],
+
+  // Stream control - HIGH-LEVEL API
+  'mds_stream_enable': [int, [mds_session_ptr]],
+  'mds_stream_disable': [int, [mds_session_ptr]],
+  'mds_stream_read_packet': [int, [mds_session_ptr, ref.refType(mds_stream_packet_t), int]],
+
+  // Buffer-based parsing functions (for async stream data)
   'mds_parse_stream_packet': [int, [ref.refType(uint8_t), size_t, ref.refType(mds_stream_packet_t)]],
 
   // Utility functions
@@ -105,4 +136,4 @@ export const lib = ffi.Library(libraryPath, {
 });
 
 // Export ref types for use in other modules
-export { ref, voidPtr, mds_session_ptr };
+export { ref, voidPtr, mds_session_ptr, mds_backend_ptr, ffi };

@@ -3,7 +3,7 @@
  * @brief Main implementation of the memfault HID library
  */
 
-#include "memfault_hid/memfault_hid.h"
+#include "memfault_hid_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <hidapi.h>

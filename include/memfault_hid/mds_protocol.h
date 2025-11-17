@@ -1,15 +1,19 @@
 /**
  * @file mds_protocol.h
- * @brief Memfault Diagnostic Service (MDS) over HID
+ * @brief Memfault Diagnostic Service (MDS) Protocol
  *
- * This implements the Memfault Diagnostic Service protocol over HID, adapted from
- * the BLE GATT service specification. It provides a bridge for diagnostic data
- * from embedded devices to gateway applications.
+ * This implements the Memfault Diagnostic Service protocol, adapted from
+ * the BLE GATT service specification. It provides a transport-agnostic
+ * interface for bridging diagnostic data from embedded devices to gateway
+ * applications.
+ *
+ * The protocol supports multiple transport backends (HID, Serial, BLE, etc.)
+ * through a pluggable backend interface.
  *
  * Protocol Overview:
  * - Feature reports provide device information and configuration
- * - Output reports control data streaming
- * - Input reports deliver diagnostic chunk data
+ * - Control reports enable/disable data streaming
+ * - Stream reports deliver diagnostic chunk data
  */
 
 #ifndef MEMFAULT_MDS_PROTOCOL_H
@@ -22,12 +26,10 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <wchar.h>
 
-/* Forward declaration - the typedef is in memfault_hid.h */
-#ifndef MEMFAULT_HID_DEVICE_T_DEFINED
-#define MEMFAULT_HID_DEVICE_T_DEFINED
-typedef struct memfault_hid_device memfault_hid_device_t;
-#endif
+/* Backend interface - include the backend header */
+#include "mds_backend.h"
 
 /* ============================================================================
  * Report ID Definitions
@@ -167,18 +169,71 @@ typedef int (*mds_chunk_upload_callback_t)(const char *uri,
 typedef struct mds_session mds_session_t;
 
 /**
- * @brief Create an MDS session over a HID device
+ * @brief Create an MDS session with a custom backend
  *
- * @param device HID device handle (must be already opened)
+ * This is the generic session creation function that accepts any backend
+ * implementation. Most users will prefer the convenience functions below.
+ *
+ * @param backend Backend instance (session takes ownership)
+ * @param session Pointer to receive session handle
+ *
+ * @return 0 on success, negative error code otherwise
+ *
+ * @note The session takes ownership of the backend and will destroy it
+ *       when mds_session_destroy() is called.
+ */
+int mds_session_create(mds_backend_t *backend,
+                       mds_session_t **session);
+
+/**
+ * @brief Create an MDS session over HID (convenience function)
+ *
+ * This convenience function creates an HID backend and MDS session in one call.
+ * The HID device is opened using the specified VID/PID and closed when the
+ * session is destroyed.
+ *
+ * @param vendor_id USB Vendor ID
+ * @param product_id USB Product ID
+ * @param serial_number Serial number (NULL for any device)
+ * @param session Pointer to receive session handle
+ *
+ * @return 0 on success, negative error code otherwise
+ *
+ * Example:
+ * @code
+ * mds_session_t *session;
+ * int ret = mds_session_create_hid(0x1234, 0x5678, NULL, &session);
+ * if (ret == 0) {
+ *     // Use session...
+ *     mds_session_destroy(session);  // Also closes HID device
+ * }
+ * @endcode
+ */
+int mds_session_create_hid(uint16_t vendor_id,
+                            uint16_t product_id,
+                            const wchar_t *serial_number,
+                            mds_session_t **session);
+
+/**
+ * @brief Create an MDS session over HID using device path (convenience function)
+ *
+ * This convenience function creates an HID backend from a device path and
+ * MDS session in one call. Useful when you've already enumerated devices
+ * and want to connect to a specific one.
+ *
+ * @param path Device path (from device enumeration)
  * @param session Pointer to receive session handle
  *
  * @return 0 on success, negative error code otherwise
  */
-int mds_session_create(memfault_hid_device_t *device,
-                       mds_session_t **session);
+int mds_session_create_hid_path(const char *path,
+                                 mds_session_t **session);
 
 /**
  * @brief Destroy an MDS session
+ *
+ * Disables streaming (if enabled), destroys the backend (which closes the
+ * underlying transport), and frees all resources.
  *
  * @param session Session handle to destroy
  */
@@ -345,138 +400,6 @@ int mds_stream_process(mds_session_t *session,
                         const mds_device_config_t *config,
                         int timeout_ms);
 
-/* ============================================================================
- * Utility Functions
- * ========================================================================== */
-
-/**
- * @brief Validate sequence number
- *
- * Checks if the sequence number is valid and detects dropped or duplicate packets.
- *
- * @param prev_seq Previous sequence number
- * @param new_seq New sequence number
- *
- * @return true if sequence is valid (next in sequence)
- *         false if packet was dropped or duplicated
- */
-bool mds_validate_sequence(uint8_t prev_seq, uint8_t new_seq);
-
-/**
- * @brief Extract sequence number from packet byte 0
- *
- * @param byte0 First byte of stream packet
- *
- * @return Sequence number (0-31)
- */
-static inline uint8_t mds_extract_sequence(uint8_t byte0) {
-    return byte0 & MDS_SEQUENCE_MASK;
-}
-
-/* ============================================================================
- * Buffer-based API for FFI/External HID Transport
- * ========================================================================== */
-
-/**
- * @brief Parse supported features from feature report buffer
- *
- * Use this when your language/runtime handles HID I/O directly.
- *
- * @param buffer Feature report data (without Report ID prefix)
- * @param buffer_len Length of buffer
- * @param features Pointer to receive features bitmask
- *
- * @return 0 on success, negative error code otherwise
- */
-int mds_parse_supported_features(const uint8_t *buffer, size_t buffer_len,
-                                  uint32_t *features);
-
-/**
- * @brief Parse device identifier from feature report buffer
- *
- * @param buffer Feature report data (without Report ID prefix)
- * @param buffer_len Length of buffer
- * @param device_id Buffer to receive device ID (null-terminated)
- * @param max_len Maximum length of output buffer
- *
- * @return 0 on success, negative error code otherwise
- */
-int mds_parse_device_identifier(const uint8_t *buffer, size_t buffer_len,
-                                 char *device_id, size_t max_len);
-
-/**
- * @brief Parse data URI from feature report buffer
- *
- * @param buffer Feature report data (without Report ID prefix)
- * @param buffer_len Length of buffer
- * @param uri Buffer to receive URI (null-terminated)
- * @param max_len Maximum length of output buffer
- *
- * @return 0 on success, negative error code otherwise
- */
-int mds_parse_data_uri(const uint8_t *buffer, size_t buffer_len,
-                        char *uri, size_t max_len);
-
-/**
- * @brief Parse authorization from feature report buffer
- *
- * @param buffer Feature report data (without Report ID prefix)
- * @param buffer_len Length of buffer
- * @param auth Buffer to receive authorization (null-terminated)
- * @param max_len Maximum length of output buffer
- *
- * @return 0 on success, negative error code otherwise
- */
-int mds_parse_authorization(const uint8_t *buffer, size_t buffer_len,
-                             char *auth, size_t max_len);
-
-/**
- * @brief Build stream control output report
- *
- * Creates output report data for enabling/disabling streaming.
- *
- * @param enable true to enable streaming, false to disable
- * @param buffer Buffer to receive output report data (without Report ID prefix)
- * @param buffer_len Length of buffer (should be at least 1)
- *
- * @return Number of bytes written, or negative error code
- */
-int mds_build_stream_control(bool enable, uint8_t *buffer, size_t buffer_len);
-
-/**
- * @brief Parse stream data packet from input report buffer
- *
- * Extracts sequence number and chunk data from a stream data input report.
- *
- * @param buffer Input report data (without Report ID prefix)
- * @param buffer_len Length of buffer
- * @param packet Pointer to receive parsed packet
- *
- * @return 0 on success, negative error code otherwise
- */
-int mds_parse_stream_packet(const uint8_t *buffer, size_t buffer_len,
-                             mds_stream_packet_t *packet);
-
-/**
- * @brief Get last sequence number from session
- *
- * Useful for sequence tracking when using buffer-based API.
- *
- * @param session MDS session handle
- *
- * @return Last received sequence number (0-31)
- */
-uint8_t mds_get_last_sequence(mds_session_t *session);
-
-/**
- * @brief Update last sequence number in session
- *
- * Call this after successfully processing a packet when using buffer-based API.
- *
- * @param session MDS session handle
- * @param sequence New sequence number to store
- */
-void mds_update_last_sequence(mds_session_t *session, uint8_t sequence);
 
 #ifdef __cplusplus
 }

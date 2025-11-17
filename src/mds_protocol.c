@@ -1,10 +1,12 @@
 /**
  * @file mds_protocol.c
- * @brief Implementation of Memfault Diagnostic Service over HID
+ * @brief Implementation of Memfault Diagnostic Service (transport-agnostic)
  */
 
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/memfault_hid.h"
+#include "memfault_hid/mds_protocol_internal.h"
+#include "memfault_hid/mds_backend.h"
+#include "mds_backend_hid_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -12,7 +14,7 @@
 
 /* MDS Session structure */
 struct mds_session {
-    memfault_hid_device_t *device;
+    mds_backend_t *backend;
     uint8_t last_sequence;
     bool streaming_enabled;
 
@@ -25,23 +27,67 @@ struct mds_session {
  * MDS Session Management
  * ========================================================================== */
 
-int mds_session_create(memfault_hid_device_t *device, mds_session_t **session) {
-    if (session == NULL) {
+int mds_session_create(mds_backend_t *backend, mds_session_t **session) {
+    if (backend == NULL || session == NULL) {
         return -EINVAL;
     }
-
-    /* Note: device can be NULL for FFI/external HID transport usage */
 
     mds_session_t *s = calloc(1, sizeof(mds_session_t));
     if (s == NULL) {
         return -ENOMEM;
     }
 
-    s->device = device;
+    s->backend = backend;
     s->last_sequence = MDS_SEQUENCE_MAX;  /* Initialize to max so first packet (0) is valid */
     s->streaming_enabled = false;
 
     *session = s;
+    return 0;
+}
+
+int mds_session_create_hid(uint16_t vendor_id, uint16_t product_id,
+                            const wchar_t *serial_number,
+                            mds_session_t **session) {
+    if (session == NULL) {
+        return -EINVAL;
+    }
+
+    /* Create HID backend */
+    mds_backend_t *backend = NULL;
+    int ret = mds_backend_hid_create(vendor_id, product_id, serial_number, &backend);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* Create session with backend */
+    ret = mds_session_create(backend, session);
+    if (ret < 0) {
+        mds_backend_destroy(backend);
+        return ret;
+    }
+
+    return 0;
+}
+
+int mds_session_create_hid_path(const char *path, mds_session_t **session) {
+    if (path == NULL || session == NULL) {
+        return -EINVAL;
+    }
+
+    /* Create HID backend from path */
+    mds_backend_t *backend = NULL;
+    int ret = mds_backend_hid_create_path(path, &backend);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* Create session with backend */
+    ret = mds_session_create(backend, session);
+    if (ret < 0) {
+        mds_backend_destroy(backend);
+        return ret;
+    }
+
     return 0;
 }
 
@@ -53,6 +99,11 @@ void mds_session_destroy(mds_session_t *session) {
     /* Disable streaming if enabled */
     if (session->streaming_enabled) {
         mds_stream_disable(session);
+    }
+
+    /* Destroy backend (closes HID device and frees resources) */
+    if (session->backend) {
+        mds_backend_destroy(session->backend);
     }
 
     free(session);
@@ -105,15 +156,24 @@ int mds_get_supported_features(mds_session_t *session, uint32_t *features) {
     }
 
     uint8_t data[4] = {0};
-    int ret = memfault_hid_get_feature_report(session->device,
-                                               MDS_REPORT_ID_SUPPORTED_FEATURES,
-                                               data, sizeof(data));
+    int ret = mds_backend_read(session->backend,
+                                MDS_REPORT_ID_SUPPORTED_FEATURES,
+                                data, sizeof(data), -1);
     if (ret < 0) {
         return ret;
     }
 
-    /* Use the buffer-based parser */
-    return mds_parse_supported_features(data, ret, features);
+    if (ret < 4) {
+        return -EINVAL;
+    }
+
+    /* Features is stored as little-endian 32-bit value */
+    *features = (uint32_t)data[0] |
+                ((uint32_t)data[1] << 8) |
+                ((uint32_t)data[2] << 16) |
+                ((uint32_t)data[3] << 24);
+
+    return 0;
 }
 
 int mds_get_device_identifier(mds_session_t *session, char *device_id, size_t max_len) {
@@ -122,15 +182,19 @@ int mds_get_device_identifier(mds_session_t *session, char *device_id, size_t ma
     }
 
     uint8_t data[MDS_MAX_DEVICE_ID_LEN];
-    int ret = memfault_hid_get_feature_report(session->device,
-                                               MDS_REPORT_ID_DEVICE_IDENTIFIER,
-                                               data, sizeof(data));
+    int ret = mds_backend_read(session->backend,
+                                MDS_REPORT_ID_DEVICE_IDENTIFIER,
+                                data, sizeof(data), -1);
     if (ret < 0) {
         return ret;
     }
 
-    /* Use the buffer-based parser */
-    return mds_parse_device_identifier(data, ret, device_id, max_len);
+    /* Copy string, ensuring null termination */
+    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    memcpy(device_id, data, copy_len);
+    device_id[copy_len] = '\0';
+
+    return 0;
 }
 
 int mds_get_data_uri(mds_session_t *session, char *uri, size_t max_len) {
@@ -139,15 +203,19 @@ int mds_get_data_uri(mds_session_t *session, char *uri, size_t max_len) {
     }
 
     uint8_t data[MDS_MAX_URI_LEN];
-    int ret = memfault_hid_get_feature_report(session->device,
-                                               MDS_REPORT_ID_DATA_URI,
-                                               data, sizeof(data));
+    int ret = mds_backend_read(session->backend,
+                                MDS_REPORT_ID_DATA_URI,
+                                data, sizeof(data), -1);
     if (ret < 0) {
         return ret;
     }
 
-    /* Use the buffer-based parser */
-    return mds_parse_data_uri(data, ret, uri, max_len);
+    /* Copy string, ensuring null termination */
+    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    memcpy(uri, data, copy_len);
+    uri[copy_len] = '\0';
+
+    return 0;
 }
 
 int mds_get_authorization(mds_session_t *session, char *auth, size_t max_len) {
@@ -156,15 +224,19 @@ int mds_get_authorization(mds_session_t *session, char *auth, size_t max_len) {
     }
 
     uint8_t data[MDS_MAX_AUTH_LEN];
-    int ret = memfault_hid_get_feature_report(session->device,
-                                               MDS_REPORT_ID_AUTHORIZATION,
-                                               data, sizeof(data));
+    int ret = mds_backend_read(session->backend,
+                                MDS_REPORT_ID_AUTHORIZATION,
+                                data, sizeof(data), -1);
     if (ret < 0) {
         return ret;
     }
 
-    /* Use the buffer-based parser */
-    return mds_parse_authorization(data, ret, auth, max_len);
+    /* Copy string, ensuring null termination */
+    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    memcpy(auth, data, copy_len);
+    auth[copy_len] = '\0';
+
+    return 0;
 }
 
 /* ============================================================================
@@ -176,17 +248,14 @@ int mds_stream_enable(mds_session_t *session) {
         return -EINVAL;
     }
 
-    /* Use the buffer-based builder */
+    /* Build stream control buffer */
     uint8_t buffer[1];
-    int bytes = mds_build_stream_control(true, buffer, sizeof(buffer));
-    if (bytes < 0) {
-        return bytes;
-    }
+    buffer[0] = MDS_STREAM_MODE_ENABLED;
 
-    /* Stream Control is now a FEATURE report (changed from OUTPUT) */
-    int ret = memfault_hid_set_feature_report(session->device,
-                                               MDS_REPORT_ID_STREAM_CONTROL,
-                                               buffer, bytes);
+    /* Stream Control is a FEATURE report */
+    int ret = mds_backend_write(session->backend,
+                                 MDS_REPORT_ID_STREAM_CONTROL,
+                                 buffer, sizeof(buffer));
     if (ret < 0) {
         return ret;
     }
@@ -200,17 +269,14 @@ int mds_stream_disable(mds_session_t *session) {
         return -EINVAL;
     }
 
-    /* Use the buffer-based builder */
+    /* Build stream control buffer */
     uint8_t buffer[1];
-    int bytes = mds_build_stream_control(false, buffer, sizeof(buffer));
-    if (bytes < 0) {
-        return bytes;
-    }
+    buffer[0] = MDS_STREAM_MODE_DISABLED;
 
-    /* Stream Control is now a FEATURE report (changed from OUTPUT) */
-    int ret = memfault_hid_set_feature_report(session->device,
-                                               MDS_REPORT_ID_STREAM_CONTROL,
-                                               buffer, bytes);
+    /* Stream Control is a FEATURE report */
+    int ret = mds_backend_write(session->backend,
+                                 MDS_REPORT_ID_STREAM_CONTROL,
+                                 buffer, sizeof(buffer));
     if (ret < 0) {
         return ret;
     }
@@ -229,18 +295,13 @@ int mds_stream_read_packet(mds_session_t *session, mds_stream_packet_t *packet,
         return -EINVAL;
     }
 
-    uint8_t report_id;
     uint8_t data[MDS_MAX_CHUNK_DATA_LEN + 1];  /* +1 for sequence byte */
 
-    int ret = memfault_hid_read_report(session->device, &report_id,
-                                        data, sizeof(data), timeout_ms);
+    int ret = mds_backend_read(session->backend,
+                                MDS_REPORT_ID_STREAM_DATA,
+                                data, sizeof(data), timeout_ms);
     if (ret < 0) {
         return ret;
-    }
-
-    /* Verify this is a stream data report */
-    if (report_id != MDS_REPORT_ID_STREAM_DATA) {
-        return -EINVAL;  /* Wrong report type */
     }
 
     /* Use the buffer-based parser */
@@ -322,76 +383,6 @@ bool mds_validate_sequence(uint8_t prev_seq, uint8_t new_seq) {
 /* ============================================================================
  * Buffer-based API for FFI/External HID Transport
  * ========================================================================== */
-
-int mds_parse_supported_features(const uint8_t *buffer, size_t buffer_len,
-                                  uint32_t *features) {
-    if (buffer == NULL || features == NULL) {
-        return -EINVAL;
-    }
-
-    if (buffer_len < 4) {
-        return -EINVAL;
-    }
-
-    /* Features is stored as little-endian 32-bit value */
-    *features = (uint32_t)buffer[0] |
-                ((uint32_t)buffer[1] << 8) |
-                ((uint32_t)buffer[2] << 16) |
-                ((uint32_t)buffer[3] << 24);
-
-    return 0;
-}
-
-int mds_parse_device_identifier(const uint8_t *buffer, size_t buffer_len,
-                                 char *device_id, size_t max_len) {
-    if (buffer == NULL || device_id == NULL || max_len == 0) {
-        return -EINVAL;
-    }
-
-    /* Copy string, ensuring null termination */
-    size_t copy_len = (buffer_len < max_len) ? buffer_len : (max_len - 1);
-    memcpy(device_id, buffer, copy_len);
-    device_id[copy_len] = '\0';
-
-    return 0;
-}
-
-int mds_parse_data_uri(const uint8_t *buffer, size_t buffer_len,
-                        char *uri, size_t max_len) {
-    if (buffer == NULL || uri == NULL || max_len == 0) {
-        return -EINVAL;
-    }
-
-    /* Copy string, ensuring null termination */
-    size_t copy_len = (buffer_len < max_len) ? buffer_len : (max_len - 1);
-    memcpy(uri, buffer, copy_len);
-    uri[copy_len] = '\0';
-
-    return 0;
-}
-
-int mds_parse_authorization(const uint8_t *buffer, size_t buffer_len,
-                             char *auth, size_t max_len) {
-    if (buffer == NULL || auth == NULL || max_len == 0) {
-        return -EINVAL;
-    }
-
-    /* Copy string, ensuring null termination */
-    size_t copy_len = (buffer_len < max_len) ? buffer_len : (max_len - 1);
-    memcpy(auth, buffer, copy_len);
-    auth[copy_len] = '\0';
-
-    return 0;
-}
-
-int mds_build_stream_control(bool enable, uint8_t *buffer, size_t buffer_len) {
-    if (buffer == NULL || buffer_len < 1) {
-        return -EINVAL;
-    }
-
-    buffer[0] = enable ? MDS_STREAM_MODE_ENABLED : MDS_STREAM_MODE_DISABLED;
-    return 1;
-}
 
 int mds_parse_stream_packet(const uint8_t *buffer, size_t buffer_len,
                              mds_stream_packet_t *packet) {

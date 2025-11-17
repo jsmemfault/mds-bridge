@@ -16,6 +16,7 @@ add_executable(test_hid
     ${CMAKE_SOURCE_DIR}/src/memfault_hid.c
     ${CMAKE_SOURCE_DIR}/src/memfault_hid_transport.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
+    ${CMAKE_SOURCE_DIR}/src/mds_backend_hid.c
 )
 
 # Include directories for HID tests
@@ -47,6 +48,7 @@ add_executable(test_upload
     stub_hidapi.c
     ${CMAKE_SOURCE_DIR}/src/chunks_uploader.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
+    ${CMAKE_SOURCE_DIR}/src/mds_backend_hid.c
 )
 
 # Include directories for upload tests
@@ -71,6 +73,7 @@ add_executable(test_mds_e2e
     ${CMAKE_SOURCE_DIR}/src/memfault_hid.c
     ${CMAKE_SOURCE_DIR}/src/memfault_hid_transport.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
+    ${CMAKE_SOURCE_DIR}/src/mds_backend_hid.c
     ${CMAKE_SOURCE_DIR}/src/chunks_uploader.c
 )
 

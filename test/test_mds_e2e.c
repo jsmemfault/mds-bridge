@@ -19,7 +19,7 @@
  * 10. Clean shutdown
  */
 
-#include "memfault_hid/memfault_hid.h"
+#include "../src/memfault_hid_internal.h"
 #include "memfault_hid/mds_protocol.h"
 #include "memfault_hid/chunks_uploader.h"
 #include <stdio.h>
@@ -53,7 +53,6 @@ static int test_assertions_failed = 0;
 
 int main(void) {
     int ret;
-    memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
     chunks_uploader_t *uploader = NULL;
     mds_device_config_t config;
@@ -65,37 +64,24 @@ int main(void) {
     printf("╚════════════════════════════════════════════════════════════╝\n");
 
     /* ========================================================================
-     * Step 1: Initialize Library
+     * Step 1: Initialize Library (done internally by MDS)
      * ======================================================================== */
     TEST_SECTION("Initializing HID library");
     ret = memfault_hid_init();
     TEST_ASSERT(ret == MEMFAULT_HID_SUCCESS, "Library initialized");
 
     /* ========================================================================
-     * Step 2: Open Device
+     * Step 2: Create MDS Session (opens HID device internally)
      * ======================================================================== */
-    TEST_SECTION("Opening mock HID device");
-    ret = memfault_hid_open(TEST_VID, TEST_PID, NULL, &device);
-    TEST_ASSERT(ret == MEMFAULT_HID_SUCCESS, "Device opened");
-    TEST_ASSERT(device != NULL, "Device handle is valid");
-
-    if (ret != MEMFAULT_HID_SUCCESS) {
-        printf("\n" COLOR_RED "Failed to open device - cannot continue" COLOR_RESET "\n");
-        memfault_hid_exit();
-        return 1;
-    }
-
-    /* ========================================================================
-     * Step 3: Create MDS Session
-     * ======================================================================== */
-    TEST_SECTION("Creating MDS session");
-    ret = mds_session_create(device, &session);
+    TEST_SECTION("Creating MDS session (opens mock HID device)");
+    ret = mds_session_create_hid(TEST_VID, TEST_PID, NULL, &session);
     TEST_ASSERT(ret == 0, "MDS session created");
     TEST_ASSERT(session != NULL, "Session handle is valid");
 
     if (ret != 0) {
         printf("\n" COLOR_RED "Failed to create session - cannot continue" COLOR_RESET "\n");
-        goto cleanup;
+        memfault_hid_exit();
+        return 1;
     }
 
     /* ========================================================================
@@ -143,14 +129,6 @@ int main(void) {
      * Step 6: Enable Streaming
      * ======================================================================== */
     TEST_SECTION("Enabling diagnostic streaming");
-
-    /* Drain any pending reports before enabling */
-    uint8_t drain_report_id;
-    uint8_t drain_data[64];
-    while (memfault_hid_read_report(device, &drain_report_id, drain_data,
-                                     sizeof(drain_data), 0) > 0) {
-        /* Drain queue */
-    }
 
     ret = mds_stream_enable(session);
     TEST_ASSERT(ret == 0, "Streaming enabled");
@@ -240,13 +218,8 @@ cleanup:
     }
 
     if (session) {
-        mds_session_destroy(session);
-        TEST_ASSERT(true, "Session destroyed");
-    }
-
-    if (device) {
-        memfault_hid_close(device);
-        TEST_ASSERT(true, "Device closed");
+        mds_session_destroy(session);  /* Also closes HID device */
+        TEST_ASSERT(true, "Session destroyed (HID device closed)");
     }
 
     ret = memfault_hid_exit();

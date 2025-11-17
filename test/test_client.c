@@ -5,8 +5,9 @@
  * This program tests the library functionality with the virtual HID device.
  */
 
-#include "memfault_hid/memfault_hid.h"
+#include "../src/memfault_hid_internal.h"
 #include "memfault_hid/mds_protocol.h"
+#include "memfault_hid/mds_protocol_internal.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -233,10 +234,14 @@ int main(void) {
         TEST_ASSERT(true, "Filter bypass successful (no filter rejection)");
     }
 
+    /* Close device before MDS tests (MDS will open its own device) */
+    memfault_hid_close(device);
+    device = NULL;
+
     /* Test 13: MDS Session Creation */
     TEST_START("MDS Session Creation");
     mds_session_t *mds_session = NULL;
-    ret = mds_session_create(device, &mds_session);
+    ret = mds_session_create_hid(TEST_VID, TEST_PID, NULL, &mds_session);
     TEST_ASSERT(ret == 0, "MDS session created successfully");
     TEST_ASSERT(mds_session != NULL, "MDS session handle is valid");
 
@@ -376,13 +381,8 @@ int main(void) {
 
     /* Test 20: MDS Session Cleanup */
     TEST_START("MDS Session Cleanup");
-    mds_session_destroy(mds_session);
-    TEST_ASSERT(true, "MDS session destroyed");
-
-    /* Test 21: Cleanup */
-    TEST_START("Cleanup");
-    memfault_hid_close(device);
-    TEST_ASSERT(true, "Device closed");
+    mds_session_destroy(mds_session);  /* Also closes HID device */
+    TEST_ASSERT(true, "MDS session destroyed (HID device closed)");
 
     ret = memfault_hid_exit();
     TEST_ASSERT(ret == MEMFAULT_HID_SUCCESS, "Library shutdown");
