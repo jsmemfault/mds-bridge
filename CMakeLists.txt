@@ -30,7 +30,7 @@ set(MEMFAULT_HID_SOURCES
     src/memfault_hid.c
     src/memfault_hid_transport.c
     src/mds_protocol.c
-    src/mds_upload.c
+    src/chunks_uploader.c
 )
 
 # Create library target

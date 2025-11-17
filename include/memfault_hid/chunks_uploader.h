@@ -1,19 +1,18 @@
 /**
- * @file mds_upload.h
- * @brief Optional HTTP upload implementation for MDS chunks
+ * @file chunks_uploader.h
+ * @brief HTTP uploader for Memfault diagnostic chunks
  *
  * This header provides a ready-to-use HTTP uploader built on libcurl.
- * This is optional and only available if BUILD_MDS_UPLOAD is enabled.
  *
  * Usage:
- * 1. Create an uploader: mds_uploader_t *uploader = mds_uploader_create();
- * 2. Set it on the session: mds_set_upload_callback(session, mds_uploader_callback, uploader);
+ * 1. Create an uploader: chunks_uploader_t *uploader = chunks_uploader_create();
+ * 2. Set it on the session: mds_set_upload_callback(session, chunks_uploader_callback, uploader);
  * 3. Process streams: mds_stream_process(session, &config, timeout);
- * 4. Destroy when done: mds_uploader_destroy(uploader);
+ * 4. Destroy when done: chunks_uploader_destroy(uploader);
  */
 
-#ifndef MEMFAULT_MDS_UPLOAD_H
-#define MEMFAULT_MDS_UPLOAD_H
+#ifndef MEMFAULT_CHUNKS_UPLOADER_H
+#define MEMFAULT_CHUNKS_UPLOADER_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,7 +25,7 @@ extern "C" {
 /**
  * @brief Opaque handle to an HTTP uploader
  */
-typedef struct mds_uploader mds_uploader_t;
+typedef struct chunks_uploader chunks_uploader_t;
 
 /**
  * @brief Upload statistics
@@ -43,7 +42,7 @@ typedef struct {
 
     /** Last HTTP status code */
     long last_http_status;
-} mds_upload_stats_t;
+} chunks_upload_stats_t;
 
 /**
  * @brief Create an HTTP uploader
@@ -53,7 +52,7 @@ typedef struct {
  *
  * @return Uploader handle, or NULL on failure
  */
-mds_uploader_t *mds_uploader_create(void);
+chunks_uploader_t *chunks_uploader_create(void);
 
 /**
  * @brief Destroy an HTTP uploader
@@ -62,31 +61,31 @@ mds_uploader_t *mds_uploader_create(void);
  *
  * @param uploader Uploader handle to destroy
  */
-void mds_uploader_destroy(mds_uploader_t *uploader);
+void chunks_uploader_destroy(chunks_uploader_t *uploader);
 
 /**
  * @brief Upload callback for use with mds_set_upload_callback()
  *
  * This function can be passed directly to mds_set_upload_callback().
- * The user_data parameter should be a mds_uploader_t* instance.
+ * The user_data parameter should be a chunks_uploader_t* instance.
  *
  * Example:
- *   mds_uploader_t *uploader = mds_uploader_create();
- *   mds_set_upload_callback(session, mds_uploader_callback, uploader);
+ *   chunks_uploader_t *uploader = chunks_uploader_create();
+ *   mds_set_upload_callback(session, chunks_uploader_callback, uploader);
  *
  * @param uri Data URI to POST to
  * @param auth_header Authorization header (format: "HeaderName:HeaderValue")
  * @param chunk_data Chunk data bytes
  * @param chunk_len Length of chunk data
- * @param user_data Must be a mds_uploader_t* instance
+ * @param user_data Must be a chunks_uploader_t* instance
  *
  * @return 0 on success, negative error code on failure
  */
-int mds_uploader_callback(const char *uri,
-                          const char *auth_header,
-                          const uint8_t *chunk_data,
-                          size_t chunk_len,
-                          void *user_data);
+int chunks_uploader_callback(const char *uri,
+                              const char *auth_header,
+                              const uint8_t *chunk_data,
+                              size_t chunk_len,
+                              void *user_data);
 
 /**
  * @brief Get upload statistics
@@ -98,8 +97,8 @@ int mds_uploader_callback(const char *uri,
  *
  * @return 0 on success, negative error code otherwise
  */
-int mds_uploader_get_stats(mds_uploader_t *uploader,
-                           mds_upload_stats_t *stats);
+int chunks_uploader_get_stats(chunks_uploader_t *uploader,
+                               chunks_upload_stats_t *stats);
 
 /**
  * @brief Reset upload statistics
@@ -110,7 +109,7 @@ int mds_uploader_get_stats(mds_uploader_t *uploader,
  *
  * @return 0 on success, negative error code otherwise
  */
-int mds_uploader_reset_stats(mds_uploader_t *uploader);
+int chunks_uploader_reset_stats(chunks_uploader_t *uploader);
 
 /**
  * @brief Set HTTP timeout for uploads
@@ -122,8 +121,8 @@ int mds_uploader_reset_stats(mds_uploader_t *uploader);
  *
  * @return 0 on success, negative error code otherwise
  */
-int mds_uploader_set_timeout(mds_uploader_t *uploader,
-                             long timeout_ms);
+int chunks_uploader_set_timeout(chunks_uploader_t *uploader,
+                                 long timeout_ms);
 
 /**
  * @brief Enable/disable verbose output
@@ -135,11 +134,11 @@ int mds_uploader_set_timeout(mds_uploader_t *uploader,
  *
  * @return 0 on success, negative error code otherwise
  */
-int mds_uploader_set_verbose(mds_uploader_t *uploader,
-                             bool verbose);
+int chunks_uploader_set_verbose(chunks_uploader_t *uploader,
+                                 bool verbose);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* MEMFAULT_MDS_UPLOAD_H */
+#endif /* MEMFAULT_CHUNKS_UPLOADER_H */

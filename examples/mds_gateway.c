@@ -18,7 +18,7 @@
 
 #include "memfault_hid/memfault_hid.h"
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_upload.h"
+#include "memfault_hid/chunks_uploader.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
     memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
     mds_device_config_t config;
-    mds_uploader_t *uploader = NULL;
+    chunks_uploader_t *uploader = NULL;
     bool dry_run = false;
     int dry_run_chunk_count = 0;
 
@@ -156,17 +156,17 @@ int main(int argc, char *argv[]) {
         printf("Dry-run callback configured\n\n");
     } else {
         printf("Setting up HTTP uploader (libcurl)...\n");
-        uploader = mds_uploader_create();
+        uploader = chunks_uploader_create();
         if (uploader == NULL) {
             fprintf(stderr, "Failed to create uploader\n");
             goto cleanup;
         }
 
         /* Enable verbose output */
-        mds_uploader_set_verbose(uploader, true);
+        chunks_uploader_set_verbose(uploader, true);
 
         /* Register the uploader callback */
-        ret = mds_set_upload_callback(session, mds_uploader_callback, uploader);
+        ret = mds_set_upload_callback(session, chunks_uploader_callback, uploader);
         if (ret != 0) {
             fprintf(stderr, "Failed to set upload callback\n");
             goto cleanup;
@@ -199,8 +199,8 @@ int main(int argc, char *argv[]) {
             if (!dry_run) {
                 printf("Processed chunk #%d\n", chunk_count);
                 /* Print upload statistics */
-                mds_upload_stats_t stats;
-                mds_uploader_get_stats(uploader, &stats);
+                chunks_upload_stats_t stats;
+                chunks_uploader_get_stats(uploader, &stats);
                 printf("  Total uploaded: %zu chunks, %zu bytes\n",
                        stats.chunks_uploaded, stats.bytes_uploaded);
                 if (stats.upload_failures > 0) {
@@ -235,15 +235,15 @@ cleanup:
         printf("--------------------------\n\n");
     } else if (uploader) {
         printf("\n--- Upload Statistics ---\n");
-        mds_upload_stats_t stats;
-        mds_uploader_get_stats(uploader, &stats);
+        chunks_upload_stats_t stats;
+        chunks_uploader_get_stats(uploader, &stats);
         printf("Chunks uploaded:   %zu\n", stats.chunks_uploaded);
         printf("Bytes uploaded:    %zu\n", stats.bytes_uploaded);
         printf("Upload failures:   %zu\n", stats.upload_failures);
         printf("Last HTTP status:  %ld\n", stats.last_http_status);
         printf("-------------------------\n\n");
 
-        mds_uploader_destroy(uploader);
+        chunks_uploader_destroy(uploader);
     }
 
     /* Cleanup */

@@ -277,29 +277,29 @@ while (running) {
 Use the built-in libcurl-based uploader:
 
 ```c
-#include "memfault_hid/mds_upload.h"
+#include "memfault_hid/chunks_uploader.h"
 
 // Create uploader
-mds_uploader_t *uploader = mds_uploader_create();
-mds_uploader_set_verbose(uploader, true);  /* Optional: enable debug output */
+chunks_uploader_t *uploader = chunks_uploader_create();
+chunks_uploader_set_verbose(uploader, true);  /* Optional: enable debug output */
 
 // Register built-in uploader
-mds_set_upload_callback(session, mds_uploader_callback, uploader);
+mds_set_upload_callback(session, chunks_uploader_callback, uploader);
 
 // Process streams - chunks are automatically uploaded via HTTP
 while (running) {
     int ret = mds_stream_process(session, &config, 5000);
     if (ret == 0) {
         // Get stats
-        mds_upload_stats_t stats;
-        mds_uploader_get_stats(uploader, &stats);
+        chunks_upload_stats_t stats;
+        chunks_uploader_get_stats(uploader, &stats);
         printf("Uploaded: %zu chunks, %zu bytes\n",
                stats.chunks_uploaded, stats.bytes_uploaded);
     }
 }
 
 // Cleanup
-mds_uploader_destroy(uploader);
+chunks_uploader_destroy(uploader);
 ```
 
 ### Report Filtering

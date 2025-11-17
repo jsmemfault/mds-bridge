@@ -6,7 +6,7 @@
  */
 
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_upload.h"
+#include "memfault_hid/chunks_uploader.h"
 #include "mock_libcurl.h"
 #include <stdio.h>
 #include <string.h>
@@ -92,25 +92,25 @@ int main(void) {
     /* Test 3: Uploader Creation and Destruction */
     TEST_START("Uploader Lifecycle");
 
-    mds_uploader_t *uploader = mds_uploader_create();
+    chunks_uploader_t *uploader = chunks_uploader_create();
     TEST_ASSERT(uploader != NULL, "Uploader created successfully");
 
-    mds_uploader_destroy(uploader);
+    chunks_uploader_destroy(uploader);
     TEST_ASSERT(true, "Uploader destroyed successfully");
 
     /* Test 4: Uploader Configuration */
     TEST_START("Uploader Configuration");
 
-    uploader = mds_uploader_create();
+    uploader = chunks_uploader_create();
     TEST_ASSERT(uploader != NULL, "Uploader created");
 
-    ret = mds_uploader_set_timeout(uploader, 60000);
+    ret = chunks_uploader_set_timeout(uploader, 60000);
     TEST_ASSERT(ret == 0, "Timeout set successfully");
 
-    ret = mds_uploader_set_verbose(uploader, true);
+    ret = chunks_uploader_set_verbose(uploader, true);
     TEST_ASSERT(ret == 0, "Verbose mode set successfully");
 
-    mds_uploader_destroy(uploader);
+    chunks_uploader_destroy(uploader);
 
     /* Test 5: Uploader Callback - Success */
     TEST_START("Uploader Callback - Success");
@@ -118,10 +118,10 @@ int main(void) {
     mock_curl_reset();
     mock_curl_set_response(200, CURLE_OK);
 
-    uploader = mds_uploader_create();
+    uploader = chunks_uploader_create();
     TEST_ASSERT(uploader != NULL, "Uploader created");
 
-    ret = mds_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
+    ret = chunks_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
     TEST_ASSERT(ret == 0, "Upload succeeded");
     TEST_ASSERT(mock_curl_get_request_count() == 1, "HTTP request was made");
 
@@ -131,8 +131,8 @@ int main(void) {
     /* Test 6: Uploader Statistics */
     TEST_START("Uploader Statistics");
 
-    mds_upload_stats_t stats;
-    ret = mds_uploader_get_stats(uploader, &stats);
+    chunks_upload_stats_t stats;
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(ret == 0, "Stats retrieved successfully");
     TEST_ASSERT(stats.chunks_uploaded == 1, "Chunk count correct");
     TEST_ASSERT(stats.bytes_uploaded == sizeof(test_chunk), "Byte count correct");
@@ -149,10 +149,10 @@ int main(void) {
     mock_curl_reset();
     mock_curl_set_response(404, CURLE_OK);
 
-    ret = mds_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
+    ret = chunks_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
     TEST_ASSERT(ret < 0, "Upload failed with HTTP error");
 
-    ret = mds_uploader_get_stats(uploader, &stats);
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(stats.upload_failures == 1, "Failure count incremented");
     TEST_ASSERT(stats.last_http_status == 404, "HTTP 404 recorded");
 
@@ -162,19 +162,19 @@ int main(void) {
     mock_curl_reset();
     mock_curl_set_response(0, CURLE_COULDNT_CONNECT);
 
-    ret = mds_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
+    ret = chunks_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
     TEST_ASSERT(ret < 0, "Upload failed with network error");
 
-    ret = mds_uploader_get_stats(uploader, &stats);
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(stats.upload_failures == 2, "Failure count incremented again");
 
     /* Test 9: Uploader Statistics Reset */
     TEST_START("Statistics Reset");
 
-    ret = mds_uploader_reset_stats(uploader);
+    ret = chunks_uploader_reset_stats(uploader);
     TEST_ASSERT(ret == 0, "Stats reset successfully");
 
-    ret = mds_uploader_get_stats(uploader, &stats);
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(stats.chunks_uploaded == 0, "Chunk count reset");
     TEST_ASSERT(stats.bytes_uploaded == 0, "Byte count reset");
     TEST_ASSERT(stats.upload_failures == 0, "Failure count reset");
@@ -186,25 +186,25 @@ int main(void) {
     mock_curl_reset();
     mock_curl_set_response(200, CURLE_OK);
 
-    ret = mds_uploader_callback(test_uri, bad_auth, test_chunk, sizeof(test_chunk), uploader);
+    ret = chunks_uploader_callback(test_uri, bad_auth, test_chunk, sizeof(test_chunk), uploader);
     TEST_ASSERT(ret < 0, "Rejects invalid auth header format");
 
-    ret = mds_uploader_get_stats(uploader, &stats);
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(stats.upload_failures == 1, "Failure recorded for invalid auth");
 
     /* Test 11: Multiple Successful Uploads */
     TEST_START("Multiple Uploads");
 
     mock_curl_reset();
-    mds_uploader_reset_stats(uploader);
+    chunks_uploader_reset_stats(uploader);
     mock_curl_set_response(200, CURLE_OK);
 
     for (int i = 0; i < 5; i++) {
-        ret = mds_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
+        ret = chunks_uploader_callback(test_uri, test_auth, test_chunk, sizeof(test_chunk), uploader);
         TEST_ASSERT(ret == 0, "Upload succeeded");
     }
 
-    ret = mds_uploader_get_stats(uploader, &stats);
+    ret = chunks_uploader_get_stats(uploader, &stats);
     TEST_ASSERT(stats.chunks_uploaded == 5, "All chunks uploaded");
     TEST_ASSERT(stats.bytes_uploaded == 5 * sizeof(test_chunk), "Total bytes correct");
     TEST_ASSERT(stats.upload_failures == 0, "No failures");
@@ -215,7 +215,7 @@ int main(void) {
 
     /* Cleanup */
     TEST_START("Cleanup");
-    mds_uploader_destroy(uploader);
+    chunks_uploader_destroy(uploader);
     TEST_ASSERT(true, "Uploader destroyed");
 
     /* Print summary */

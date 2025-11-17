@@ -21,7 +21,7 @@
 
 #include "memfault_hid/memfault_hid.h"
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_upload.h"
+#include "memfault_hid/chunks_uploader.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -55,7 +55,7 @@ int main(void) {
     int ret;
     memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
-    mds_uploader_t *uploader = NULL;
+    chunks_uploader_t *uploader = NULL;
     mds_device_config_t config;
 
     printf("\n");
@@ -124,7 +124,7 @@ int main(void) {
      * Step 5: Set Up Uploader
      * ======================================================================== */
     TEST_SECTION("Setting up HTTP uploader (mock)");
-    uploader = mds_uploader_create();
+    uploader = chunks_uploader_create();
     TEST_ASSERT(uploader != NULL, "Uploader created");
 
     if (uploader == NULL) {
@@ -133,10 +133,10 @@ int main(void) {
     }
 
     /* Configure uploader */
-    mds_uploader_set_verbose(uploader, false);  /* Quiet for test */
+    chunks_uploader_set_verbose(uploader, false);  /* Quiet for test */
 
     /* Register upload callback */
-    ret = mds_set_upload_callback(session, mds_uploader_callback, uploader);
+    ret = mds_set_upload_callback(session, chunks_uploader_callback, uploader);
     TEST_ASSERT(ret == 0, "Upload callback registered");
 
     /* ========================================================================
@@ -182,8 +182,8 @@ int main(void) {
             printf("  Chunk %d processed\n", chunks_processed);
 
             /* Get upload stats after each chunk */
-            mds_upload_stats_t stats;
-            mds_uploader_get_stats(uploader, &stats);
+            chunks_upload_stats_t stats;
+            chunks_uploader_get_stats(uploader, &stats);
             printf("    Uploaded: %zu chunks, %zu bytes, status: %ld\n",
                    stats.chunks_uploaded, stats.bytes_uploaded, stats.last_http_status);
         } else if (ret == -ETIMEDOUT) {
@@ -204,8 +204,8 @@ int main(void) {
      * ======================================================================== */
     TEST_SECTION("Verifying upload statistics");
 
-    mds_upload_stats_t final_stats;
-    mds_uploader_get_stats(uploader, &final_stats);
+    chunks_upload_stats_t final_stats;
+    chunks_uploader_get_stats(uploader, &final_stats);
 
     printf("  Chunks uploaded:   %zu\n", final_stats.chunks_uploaded);
     printf("  Bytes uploaded:    %zu\n", final_stats.bytes_uploaded);
@@ -235,7 +235,7 @@ int main(void) {
 
 cleanup:
     if (uploader) {
-        mds_uploader_destroy(uploader);
+        chunks_uploader_destroy(uploader);
         TEST_ASSERT(true, "Uploader destroyed");
     }
 

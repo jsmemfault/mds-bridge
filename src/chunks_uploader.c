@@ -1,9 +1,9 @@
 /**
- * @file mds_upload.c
+ * @file chunks_uploader.c
  * @brief HTTP uploader implementation using libcurl
  */
 
-#include "memfault_hid/mds_upload.h"
+#include "memfault_hid/chunks_uploader.h"
 #include <curl/curl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,10 +12,10 @@
 #include <stdbool.h>
 
 /* Uploader structure */
-struct mds_uploader {
+struct chunks_uploader {
     CURL *curl;
     struct curl_slist *headers;
-    mds_upload_stats_t stats;
+    chunks_upload_stats_t stats;
     long timeout_ms;
     bool verbose;
 };
@@ -24,8 +24,8 @@ struct mds_uploader {
  * Uploader Management
  * ========================================================================== */
 
-mds_uploader_t *mds_uploader_create(void) {
-    mds_uploader_t *uploader = calloc(1, sizeof(mds_uploader_t));
+chunks_uploader_t *chunks_uploader_create(void) {
+    chunks_uploader_t *uploader = calloc(1, sizeof(chunks_uploader_t));
     if (uploader == NULL) {
         return NULL;
     }
@@ -44,7 +44,7 @@ mds_uploader_t *mds_uploader_create(void) {
     return uploader;
 }
 
-void mds_uploader_destroy(mds_uploader_t *uploader) {
+void chunks_uploader_destroy(chunks_uploader_t *uploader) {
     if (uploader == NULL) {
         return;
     }
@@ -64,16 +64,16 @@ void mds_uploader_destroy(mds_uploader_t *uploader) {
  * Upload Callback
  * ========================================================================== */
 
-int mds_uploader_callback(const char *uri,
-                          const char *auth_header,
-                          const uint8_t *chunk_data,
-                          size_t chunk_len,
-                          void *user_data) {
+int chunks_uploader_callback(const char *uri,
+                              const char *auth_header,
+                              const uint8_t *chunk_data,
+                              size_t chunk_len,
+                              void *user_data) {
     if (uri == NULL || auth_header == NULL || chunk_data == NULL || user_data == NULL) {
         return -EINVAL;
     }
 
-    mds_uploader_t *uploader = (mds_uploader_t *)user_data;
+    chunks_uploader_t *uploader = (chunks_uploader_t *)user_data;
     CURLcode res;
 
     /* Reset curl for new request */
@@ -176,8 +176,8 @@ int mds_uploader_callback(const char *uri,
  * Statistics
  * ========================================================================== */
 
-int mds_uploader_get_stats(mds_uploader_t *uploader,
-                           mds_upload_stats_t *stats) {
+int chunks_uploader_get_stats(chunks_uploader_t *uploader,
+                               chunks_upload_stats_t *stats) {
     if (uploader == NULL || stats == NULL) {
         return -EINVAL;
     }
@@ -186,7 +186,7 @@ int mds_uploader_get_stats(mds_uploader_t *uploader,
     return 0;
 }
 
-int mds_uploader_reset_stats(mds_uploader_t *uploader) {
+int chunks_uploader_reset_stats(chunks_uploader_t *uploader) {
     if (uploader == NULL) {
         return -EINVAL;
     }
@@ -199,8 +199,8 @@ int mds_uploader_reset_stats(mds_uploader_t *uploader) {
  * Configuration
  * ========================================================================== */
 
-int mds_uploader_set_timeout(mds_uploader_t *uploader,
-                             long timeout_ms) {
+int chunks_uploader_set_timeout(chunks_uploader_t *uploader,
+                                 long timeout_ms) {
     if (uploader == NULL) {
         return -EINVAL;
     }
@@ -209,8 +209,8 @@ int mds_uploader_set_timeout(mds_uploader_t *uploader,
     return 0;
 }
 
-int mds_uploader_set_verbose(mds_uploader_t *uploader,
-                             bool verbose) {
+int chunks_uploader_set_verbose(chunks_uploader_t *uploader,
+                                 bool verbose) {
     if (uploader == NULL) {
         return -EINVAL;
     }

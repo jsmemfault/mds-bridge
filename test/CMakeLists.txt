@@ -45,7 +45,7 @@ add_executable(test_upload
     test_upload.c
     mock_libcurl.c
     stub_hidapi.c
-    ${CMAKE_SOURCE_DIR}/src/mds_upload.c
+    ${CMAKE_SOURCE_DIR}/src/chunks_uploader.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
 )
 
@@ -71,7 +71,7 @@ add_executable(test_mds_e2e
     ${CMAKE_SOURCE_DIR}/src/memfault_hid.c
     ${CMAKE_SOURCE_DIR}/src/memfault_hid_transport.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
-    ${CMAKE_SOURCE_DIR}/src/mds_upload.c
+    ${CMAKE_SOURCE_DIR}/src/chunks_uploader.c
 )
 
 # Include directories for e2e test
