@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 
 /* MDS Session structure */
 struct mds_session {
@@ -182,9 +183,10 @@ int mds_stream_enable(mds_session_t *session) {
         return bytes;
     }
 
-    int ret = memfault_hid_write_report(session->device,
-                                         MDS_REPORT_ID_STREAM_CONTROL,
-                                         buffer, bytes, 1000);
+    /* Stream Control is now a FEATURE report (changed from OUTPUT) */
+    int ret = memfault_hid_set_feature_report(session->device,
+                                               MDS_REPORT_ID_STREAM_CONTROL,
+                                               buffer, bytes);
     if (ret < 0) {
         return ret;
     }
@@ -205,9 +207,10 @@ int mds_stream_disable(mds_session_t *session) {
         return bytes;
     }
 
-    int ret = memfault_hid_write_report(session->device,
-                                         MDS_REPORT_ID_STREAM_CONTROL,
-                                         buffer, bytes, 1000);
+    /* Stream Control is now a FEATURE report (changed from OUTPUT) */
+    int ret = memfault_hid_set_feature_report(session->device,
+                                               MDS_REPORT_ID_STREAM_CONTROL,
+                                               buffer, bytes);
     if (ret < 0) {
         return ret;
     }

@@ -9,18 +9,16 @@
  * 4. Receive and upload chunks to Memfault cloud
  *
  * Usage:
- *   ./mds_gateway <vid> <pid>
+ *   ./mds_gateway <vid> <pid> [--dry-run]
  *
- * Example:
- *   ./mds_gateway 1234 5678
+ * Examples:
+ *   ./mds_gateway 1234 5678              # Upload to Memfault cloud
+ *   ./mds_gateway 1234 5678 --dry-run    # Print chunks without uploading
  */
 
 #include "memfault_hid/memfault_hid.h"
 #include "memfault_hid/mds_protocol.h"
-
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
 #include "memfault_hid/mds_upload.h"
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,16 +34,16 @@ static void signal_handler(int signum) {
     keep_running = 0;
 }
 
-/* Custom upload callback example */
-static int custom_upload_callback(const char *uri,
-                                   const char *auth_header,
-                                   const uint8_t *chunk_data,
-                                   size_t chunk_len,
-                                   void *user_data) {
+/* Dry-run callback - prints chunks without uploading */
+static int dry_run_callback(const char *uri,
+                             const char *auth_header,
+                             const uint8_t *chunk_data,
+                             size_t chunk_len,
+                             void *user_data) {
     int *chunk_count = (int *)user_data;
     (*chunk_count)++;
 
-    printf("\n[Custom Uploader] Chunk #%d\n", *chunk_count);
+    printf("\n[DRY RUN] Chunk #%d (not uploading)\n", *chunk_count);
     printf("  URI: %s\n", uri);
     printf("  Auth: %s\n", auth_header);
     printf("  Size: %zu bytes\n", chunk_len);
@@ -58,8 +56,6 @@ static int custom_upload_callback(const char *uri,
     }
     printf("\n");
 
-    /* In a real application, you would POST this data using your HTTP client */
-    /* For now, we just log it */
     return 0;
 }
 
@@ -69,42 +65,35 @@ int main(int argc, char *argv[]) {
     memfault_hid_device_t *device = NULL;
     mds_session_t *session = NULL;
     mds_device_config_t config;
-
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
     mds_uploader_t *uploader = NULL;
-    bool use_builtin_uploader = true;
-#else
-    bool use_builtin_uploader = false;
-#endif
-
-    int custom_chunk_count = 0;
+    bool dry_run = false;
+    int dry_run_chunk_count = 0;
 
     /* Parse arguments */
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <vid> <pid> [--custom-upload]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <vid> <pid> [--dry-run]\n", argv[0]);
         fprintf(stderr, "\n");
         fprintf(stderr, "Arguments:\n");
-        fprintf(stderr, "  vid              Vendor ID (hex, e.g., 1234)\n");
-        fprintf(stderr, "  pid              Product ID (hex, e.g., 5678)\n");
-        fprintf(stderr, "  --custom-upload  Use custom upload callback instead of built-in\n");
+        fprintf(stderr, "  vid        Vendor ID (hex, e.g., 2fe3)\n");
+        fprintf(stderr, "  pid        Product ID (hex, e.g., 0007)\n");
+        fprintf(stderr, "  --dry-run  Print chunks without uploading to Memfault cloud\n");
         fprintf(stderr, "\n");
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
-        fprintf(stderr, "Built-in HTTP uploader: ENABLED (libcurl)\n");
-#else
-        fprintf(stderr, "Built-in HTTP uploader: DISABLED\n");
-#endif
+        fprintf(stderr, "Examples:\n");
+        fprintf(stderr, "  %s 2fe3 0007            # Upload to Memfault cloud\n", argv[0]);
+        fprintf(stderr, "  %s 2fe3 0007 --dry-run  # Print only, no upload\n", argv[0]);
+        fprintf(stderr, "\n");
         return 1;
     }
 
     if (sscanf(argv[1], "%x", &vid) != 1 || sscanf(argv[2], "%x", &pid) != 1) {
-        fprintf(stderr, "Invalid VID/PID format. Use hex format (e.g., 1234)\n");
+        fprintf(stderr, "Invalid VID/PID format. Use hex format (e.g., 2fe3)\n");
         return 1;
     }
 
-    /* Check for custom upload flag */
-    if (argc >= 4 && strcmp(argv[3], "--custom-upload") == 0) {
-        use_builtin_uploader = false;
-        printf("Using custom upload callback\n");
+    /* Check for dry-run flag */
+    if (argc >= 4 && strcmp(argv[3], "--dry-run") == 0) {
+        dry_run = true;
+        printf("DRY RUN mode - chunks will be printed but NOT uploaded\n\n");
     }
 
     /* Set up signal handler for graceful shutdown */
@@ -157,16 +146,23 @@ int main(int argc, char *argv[]) {
     printf("----------------------------\n\n");
 
     /* Set up upload callback */
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
-    if (use_builtin_uploader) {
-        printf("Setting up built-in HTTP uploader (libcurl)...\n");
+    if (dry_run) {
+        printf("Setting up dry-run callback (no upload)...\n");
+        ret = mds_set_upload_callback(session, dry_run_callback, &dry_run_chunk_count);
+        if (ret != 0) {
+            fprintf(stderr, "Failed to set dry-run callback\n");
+            goto cleanup;
+        }
+        printf("Dry-run callback configured\n\n");
+    } else {
+        printf("Setting up HTTP uploader (libcurl)...\n");
         uploader = mds_uploader_create();
         if (uploader == NULL) {
             fprintf(stderr, "Failed to create uploader\n");
             goto cleanup;
         }
 
-        /* Enable verbose output for demonstration */
+        /* Enable verbose output */
         mds_uploader_set_verbose(uploader, true);
 
         /* Register the uploader callback */
@@ -175,17 +171,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Failed to set upload callback\n");
             goto cleanup;
         }
-        printf("Built-in uploader configured\n\n");
-    } else
-#endif
-    {
-        printf("Setting up custom upload callback...\n");
-        ret = mds_set_upload_callback(session, custom_upload_callback, &custom_chunk_count);
-        if (ret != 0) {
-            fprintf(stderr, "Failed to set custom upload callback\n");
-            goto cleanup;
-        }
-        printf("Custom callback configured\n\n");
+        printf("HTTP uploader configured\n\n");
     }
 
     /* Enable streaming */
@@ -203,16 +189,15 @@ int main(int argc, char *argv[]) {
 
     /* Process stream packets */
     int chunk_count = 0;
+    int error_count = 0;
     while (keep_running) {
-        /* Process one packet with 5 second timeout */
-        ret = mds_stream_process(session, &config, 5000);
+        /* Process one packet with 1 second timeout */
+        ret = mds_stream_process(session, &config, 1000);
 
         if (ret == 0) {
             chunk_count++;
-            printf("Processed chunk #%d\n", chunk_count);
-
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
-            if (use_builtin_uploader) {
+            if (!dry_run) {
+                printf("Processed chunk #%d\n", chunk_count);
                 /* Print upload statistics */
                 mds_upload_stats_t stats;
                 mds_uploader_get_stats(uploader, &stats);
@@ -222,13 +207,16 @@ int main(int argc, char *argv[]) {
                     printf("  Upload failures: %zu\n", stats.upload_failures);
                 }
             }
-#endif
+            /* In dry-run mode, the callback itself prints the chunk info */
         } else if (ret == -ETIMEDOUT) {
-            /* Timeout is normal - no data available */
+            /* Timeout is normal - no data available, continue */
             continue;
         } else {
-            fprintf(stderr, "Error processing stream: %d\n", ret);
-            break;
+            /* Other errors - warn but continue (device might not be sending data yet) */
+            if (error_count == 0) {
+                fprintf(stderr, "Warning: Error processing stream: %d (device might not be sending data yet)\n", ret);
+            }
+            error_count++;
         }
     }
 
@@ -240,8 +228,12 @@ int main(int argc, char *argv[]) {
 
 cleanup:
     /* Print final statistics */
-#ifdef MEMFAULT_HID_MDS_UPLOAD_ENABLED
-    if (uploader) {
+    if (dry_run) {
+        printf("\n--- Dry Run Statistics ---\n");
+        printf("Chunks processed: %d\n", dry_run_chunk_count);
+        printf("(Not uploaded - dry run mode)\n");
+        printf("--------------------------\n\n");
+    } else if (uploader) {
         printf("\n--- Upload Statistics ---\n");
         mds_upload_stats_t stats;
         mds_uploader_get_stats(uploader, &stats);
@@ -253,13 +245,6 @@ cleanup:
 
         mds_uploader_destroy(uploader);
     }
-#else
-    if (!use_builtin_uploader) {
-        printf("\n--- Custom Upload Statistics ---\n");
-        printf("Chunks processed: %d\n", custom_chunk_count);
-        printf("--------------------------------\n\n");
-    }
-#endif
 
     /* Cleanup */
     if (session) {

@@ -40,6 +40,15 @@ int memfault_hid_get_feature_report(memfault_hid_device_t *device, uint8_t repor
     return -ENOSYS;  /* Not implemented */
 }
 
+int memfault_hid_send_output_report(memfault_hid_device_t *device, uint8_t report_id,
+                                     const uint8_t *data, size_t length) {
+    (void)device;
+    (void)report_id;
+    (void)data;
+    (void)length;
+    return -ENOSYS;  /* Not implemented */
+}
+
 int memfault_hid_set_feature_report(memfault_hid_device_t *device, uint8_t report_id,
                                      const uint8_t *data, size_t length) {
     (void)device;

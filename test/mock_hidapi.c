@@ -369,6 +369,48 @@ int HID_API_EXPORT hid_read_timeout(hid_device *dev, unsigned char *data,
     return hid_read(dev, data, length);
 }
 
+int HID_API_EXPORT hid_send_output_report(hid_device *dev,
+                                           const unsigned char *data,
+                                           size_t length) {
+    if (dev != (hid_device *)&g_mock_device || !g_mock_device.open) {
+        return -1;
+    }
+
+    uint8_t report_id = data[0];
+    printf("[MOCK] hid_send_output_report(report_id=0x%02X, length=%zu) Data: ",
+           report_id, length);
+
+    /* Print data for debugging */
+    for (size_t i = 0; i < length && i < 16; i++) {
+        printf("%02X ", data[i]);
+    }
+    if (length > 16) {
+        printf("...");
+    }
+    printf("\n");
+
+    /* Handle MDS Stream Control (Report ID 0x05) */
+    if (report_id == MDS_REPORT_ID_STREAM_CONTROL && length >= 2) {
+        uint8_t mode = data[1];
+        if (mode == 0x01) {  /* MDS_STREAM_MODE_ENABLED */
+            printf("[MOCK]   MDS Streaming ENABLED\n");
+            g_mock_device.mds_streaming_enabled = true;
+            g_mock_device.mds_sequence_counter = 0;
+
+            /* Queue some mock chunk data packets */
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_001", 19);
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_002", 19);
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_003", 19);
+        } else {  /* MDS_STREAM_MODE_DISABLED */
+            printf("[MOCK]   MDS Streaming DISABLED\n");
+            g_mock_device.mds_streaming_enabled = false;
+        }
+        return (int)length;
+    }
+
+    return (int)length;
+}
+
 int HID_API_EXPORT hid_send_feature_report(hid_device *dev,
                                             const unsigned char *data,
                                             size_t length) {
@@ -379,6 +421,24 @@ int HID_API_EXPORT hid_send_feature_report(hid_device *dev,
     uint8_t report_id = data[0];
     printf("[MOCK] hid_send_feature_report(report_id=0x%02X, length=%zu)\n",
            report_id, length);
+
+    /* Handle MDS Stream Control (Report ID 0x05) - now a FEATURE report */
+    if (report_id == MDS_REPORT_ID_STREAM_CONTROL && length >= 2) {
+        uint8_t mode = data[1];
+        if (mode == 0x01) {  /* MDS_STREAM_MODE_ENABLED */
+            printf("[MOCK]   MDS Streaming ENABLED\n");
+            g_mock_device.mds_streaming_enabled = true;
+            g_mock_device.mds_sequence_counter = 0;
+
+            /* Queue some mock chunk data packets */
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_001", 19);
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_002", 19);
+            mds_queue_stream_packet("MOCK_CHUNK_DATA_003", 19);
+        } else {  /* MDS_STREAM_MODE_DISABLED */
+            printf("[MOCK]   MDS Streaming DISABLED\n");
+            g_mock_device.mds_streaming_enabled = false;
+        }
+    }
 
     /* Store the feature report */
     if (length > sizeof(g_mock_device.feature_reports[report_id])) {

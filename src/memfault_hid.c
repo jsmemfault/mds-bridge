@@ -372,8 +372,46 @@ int memfault_hid_get_feature_report(memfault_hid_device_t *device,
         return MEMFAULT_HID_ERROR_IO;
     }
 
+    /* Verify Report ID in response matches what we requested */
+    if (buffer[0] != report_id) {
+        return MEMFAULT_HID_ERROR_IO;
+    }
+
     /* Copy data (excluding Report ID) */
     memcpy(data, buffer + 1, result - 1);
+    return result - 1;
+}
+
+int memfault_hid_send_output_report(memfault_hid_device_t *device,
+                                     uint8_t report_id,
+                                     const uint8_t *data,
+                                     size_t length) {
+    if (device == NULL || data == NULL) {
+        return MEMFAULT_HID_ERROR_INVALID_PARAM;
+    }
+
+    if (is_report_filtered(device, report_id)) {
+        return MEMFAULT_HID_ERROR_INVALID_REPORT_TYPE;
+    }
+
+    uint8_t buffer[MEMFAULT_HID_MAX_REPORT_SIZE + 1];
+    buffer[0] = report_id;
+    memcpy(buffer + 1, data, length);
+
+    /* Debug: Print what we're sending */
+    #ifdef DEBUG_HID_REPORTS
+    printf("[DEBUG] Sending output report: ID=0x%02X, len=%zu, data=[", report_id, length);
+    for (size_t i = 0; i < length + 1; i++) {
+        printf("%02X%s", buffer[i], i < length ? " " : "");
+    }
+    printf("]\n");
+    #endif
+
+    int result = hid_send_output_report(device->handle, buffer, length + 1);
+    if (result < 0) {
+        return MEMFAULT_HID_ERROR_IO;
+    }
+
     return result - 1;
 }
 

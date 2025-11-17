@@ -24,8 +24,8 @@ extern "C" {
 #define MEMFAULT_HID_VERSION_MINOR 0
 #define MEMFAULT_HID_VERSION_PATCH 0
 
-/* Maximum report size (typical HID limit is 64 bytes for low-speed devices) */
-#define MEMFAULT_HID_MAX_REPORT_SIZE 64
+/* Maximum report size (increased to support MDS feature reports up to 128 bytes) */
+#define MEMFAULT_HID_MAX_REPORT_SIZE 256
 
 /**
  * @brief Error codes
@@ -270,6 +270,25 @@ int memfault_hid_read_report(memfault_hid_device_t *device,
 int memfault_hid_get_feature_report(memfault_hid_device_t *device,
                                      uint8_t report_id,
                                      uint8_t *data,
+                                     size_t length);
+
+/**
+ * @brief Send an output report to the device (via SET_REPORT)
+ *
+ * This sends an OUTPUT report using a SET_REPORT control request.
+ * This is different from hid_write() which sends data to the OUT endpoint.
+ * Use this for HID devices that expect OUTPUT reports via control transfers.
+ *
+ * @param device Device handle
+ * @param report_id Report ID
+ * @param data Report data (without Report ID prefix)
+ * @param length Length of data
+ *
+ * @return Number of bytes sent on success, negative error code otherwise
+ */
+int memfault_hid_send_output_report(memfault_hid_device_t *device,
+                                     uint8_t report_id,
+                                     const uint8_t *data,
                                      size_t length);
 
 /**
