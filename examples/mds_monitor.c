@@ -21,7 +21,6 @@
 #include <time.h>
 #include "../src/memfault_hid_internal.h"  /* For device enumeration */
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_protocol_internal.h"
 
 /* Global flag for clean shutdown */
 static volatile bool g_running = true;
@@ -226,8 +225,8 @@ static int monitor_mds_stream(const char *path) {
 
             /* Validate sequence */
             if (!first_packet) {
-                if (!mds_validate_sequence(last_seq, packet.sequence)) {
-                    uint8_t expected = (last_seq + 1) & MDS_SEQUENCE_MASK;
+                uint8_t expected = (last_seq + 1) & MDS_SEQUENCE_MASK;
+                if (packet.sequence != expected) {
                     printf("  WARNING: Sequence error! Expected %u, got %u\n\n",
                            expected, packet.sequence);
                     stats.sequence_errors++;

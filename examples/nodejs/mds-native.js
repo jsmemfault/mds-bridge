@@ -24,7 +24,7 @@ try {
 }
 
 /**
- * MDS Client using native protocol functions
+ * MDS Client using native protocol functions with C session management
  */
 export class MDSClient {
   constructor(hidDevice) {
@@ -32,11 +32,16 @@ export class MDSClient {
     this.config = null;
     this.streaming = false;
     this.onChunk = null;
-    this.lastSequence = null;
+    this.session = null; // C session handle
   }
 
   async initialize() {
     console.log('[MDSClient] Initializing with native protocol...');
+
+    // Create native session with backend
+    this.session = native.createSession();
+
+    // Read device config
     await this.readDeviceConfig();
   }
 
@@ -133,6 +138,7 @@ export class MDSClient {
 
   /**
    * Internal method to process MDS stream packet payload
+   * Uses the native C API to handle parsing, sequence validation, and tracking
    */
   _processStreamPayload(payload) {
     if (!payload || payload.length === 0) {
@@ -140,18 +146,9 @@ export class MDSClient {
     }
 
     try {
-      // Parse the stream packet using native code
-      const packet = native.parseStreamPacket(payload);
-
-      // Validate sequence if we have a previous one
-      if (this.lastSequence !== null) {
-        const valid = native.validateSequence(this.lastSequence, packet.sequence);
-        if (!valid) {
-          console.warn(`[MDSClient] Sequence gap detected: ${this.lastSequence} -> ${packet.sequence}`);
-        }
-      }
-
-      this.lastSequence = packet.sequence;
+      // Process the stream packet using the native C API
+      // Pass session, config, and buffer
+      const packet = native.processStreamFromBytes(this.session, this.config, payload);
 
       console.log(`[MDSClient] Received chunk: seq=${packet.sequence}, len=${packet.length}`);
 
@@ -160,7 +157,7 @@ export class MDSClient {
         this.onChunk(packet);
       }
     } catch (error) {
-      console.error(`[MDSClient] Failed to parse stream packet:`, error);
+      console.error(`[MDSClient] Failed to process stream packet:`, error);
     }
   }
 

@@ -3,9 +3,9 @@ FFI bindings for Memfault HID library
 
 This module provides ctypes bindings to the memfault_hid C library.
 
-It includes the public MDS API from mds_protocol.h, which provides both:
+It includes the public MDS API from mds_protocol.h, which provides:
 - High-level session management (mds_session_create, mds_read_device_config, etc.)
-- Buffer-based parsing for event-driven I/O (mds_parse_stream_packet, etc.)
+- Stream processing for both blocking I/O (mds_process_stream) and event-driven I/O (mds_process_stream_from_bytes)
 """
 
 import ctypes
@@ -158,6 +158,16 @@ _lib_path = get_library_path()
 print(f"Loading Memfault HID library from: {_lib_path}")
 lib = ctypes.CDLL(_lib_path)
 
+# Callback typedefs
+MDS_CHUNK_UPLOAD_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int,  # return type
+    ctypes.c_char_p,  # uri
+    ctypes.c_char_p,  # auth_header
+    ctypes.POINTER(ctypes.c_uint8),  # chunk_data
+    ctypes.c_size_t,  # chunk_len
+    ctypes.c_void_p  # user_data
+)
+
 # Function signatures
 
 # Session management - HIGH-LEVEL API
@@ -189,6 +199,14 @@ lib.mds_stream_enable.restype = ctypes.c_int
 lib.mds_stream_disable.argtypes = [ctypes.c_void_p]  # session
 lib.mds_stream_disable.restype = ctypes.c_int
 
+# Upload callback registration
+lib.mds_set_upload_callback.argtypes = [
+    ctypes.c_void_p,  # session
+    MDS_CHUNK_UPLOAD_CALLBACK,  # callback
+    ctypes.c_void_p  # user_data
+]
+lib.mds_set_upload_callback.restype = ctypes.c_int
+
 lib.mds_stream_read_packet.argtypes = [
     ctypes.c_void_p,  # session
     ctypes.POINTER(mds_stream_packet_t),  # packet
@@ -196,23 +214,24 @@ lib.mds_stream_read_packet.argtypes = [
 ]
 lib.mds_stream_read_packet.restype = ctypes.c_int
 
-# Buffer-based parsing functions (for async stream data)
-lib.mds_parse_stream_packet.argtypes = [
-    ctypes.POINTER(ctypes.c_uint8),
-    ctypes.c_size_t,
-    ctypes.POINTER(mds_stream_packet_t)
+# High-level stream processing - blocking I/O (reads from device)
+lib.mds_process_stream.argtypes = [
+    ctypes.c_void_p,  # session
+    ctypes.POINTER(mds_device_config_t),  # config
+    ctypes.c_int,  # timeout_ms
+    ctypes.POINTER(mds_stream_packet_t)  # packet (can be NULL)
 ]
-lib.mds_parse_stream_packet.restype = ctypes.c_int
+lib.mds_process_stream.restype = ctypes.c_int
 
-# Utility functions
-lib.mds_validate_sequence.argtypes = [ctypes.c_uint8, ctypes.c_uint8]
-lib.mds_validate_sequence.restype = ctypes.c_bool
-
-lib.mds_get_last_sequence.argtypes = [ctypes.c_void_p]
-lib.mds_get_last_sequence.restype = ctypes.c_uint8
-
-lib.mds_update_last_sequence.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
-lib.mds_update_last_sequence.restype = None
+# High-level stream processing - event-driven I/O (processes byte buffer)
+lib.mds_process_stream_from_bytes.argtypes = [
+    ctypes.c_void_p,  # session
+    ctypes.POINTER(mds_device_config_t),  # config
+    ctypes.POINTER(ctypes.c_uint8),  # buffer
+    ctypes.c_size_t,  # buffer_len
+    ctypes.POINTER(mds_stream_packet_t)  # packet (can be NULL)
+]
+lib.mds_process_stream_from_bytes.restype = ctypes.c_int
 
 # Helper functions
 

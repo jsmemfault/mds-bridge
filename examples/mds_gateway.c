@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
     int error_count = 0;
     while (keep_running) {
         /* Process one packet with 1 second timeout */
-        ret = mds_stream_process(session, &config, 1000);
+        ret = mds_process_stream(session, &config, 1000, NULL);
 
         if (ret == 0) {
             chunk_count++;

@@ -4,7 +4,6 @@
  */
 
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_protocol_internal.h"
 #include "memfault_hid/mds_backend.h"
 #include "mds_backend_hid_internal.h"
 #include <stdlib.h>
@@ -22,6 +21,49 @@ struct mds_session {
     mds_chunk_upload_callback_t upload_callback;
     void *upload_user_data;
 };
+
+
+/* ============================================================================
+ * Internal Helper Functions
+ * ========================================================================== */
+
+static uint8_t mds_extract_sequence(uint8_t byte0) {
+    return byte0 & MDS_SEQUENCE_MASK;
+}
+
+static bool mds_validate_sequence(uint8_t prev_seq, uint8_t new_seq) {
+    /* Expected next sequence */
+    uint8_t expected = (prev_seq + 1) & MDS_SEQUENCE_MASK;
+
+    return (new_seq == expected);
+}
+
+static int mds_parse_stream_packet(const uint8_t *buffer, size_t buffer_len,
+                                    mds_stream_packet_t *packet) {
+    if (buffer == NULL || packet == NULL) {
+        return -EINVAL;
+    }
+
+    if (buffer_len < 1) {
+        return -EINVAL;  /* Need at least sequence byte */
+    }
+
+    /* Extract sequence number */
+    packet->sequence = mds_extract_sequence(buffer[0]);
+
+    /* Copy payload data */
+    packet->data_len = buffer_len - 1;  /* Exclude sequence byte */
+    if (packet->data_len > MDS_MAX_CHUNK_DATA_LEN) {
+        packet->data_len = MDS_MAX_CHUNK_DATA_LEN;
+    }
+
+    if (packet->data_len > 0) {
+        memcpy(packet->data, &buffer[1], packet->data_len);
+    }
+
+    return 0;
+}
+
 
 /* ============================================================================
  * MDS Session Management
@@ -333,34 +375,36 @@ int mds_set_upload_callback(mds_session_t *session,
     return 0;
 }
 
-int mds_stream_process(mds_session_t *session,
-                        const mds_device_config_t *config,
-                        int timeout_ms) {
-    if (session == NULL || config == NULL) {
-        return -EINVAL;
-    }
-
-    mds_stream_packet_t packet;
-    int ret = mds_stream_read_packet(session, &packet, timeout_ms);
-    if (ret < 0) {
-        return ret;
-    }
-
+/* Common packet processing logic (validate, update sequence, upload) */
+static int mds_process_packet_common(mds_session_t *session,
+                                      const mds_device_config_t *config,
+                                      const mds_stream_packet_t *pkt,
+                                      mds_stream_packet_t *packet_out) {
     /* Validate sequence if we have a previous sequence */
     if (session->last_sequence != MDS_SEQUENCE_MAX) {
-        if (!mds_validate_sequence(session->last_sequence, packet.sequence)) {
+        if (!mds_validate_sequence(session->last_sequence, pkt->sequence)) {
             /* Log warning but continue - sequence validation is not critical */
-            /* Note: Actual logging would require a logging callback or printf */
+            uint8_t expected = (session->last_sequence + 1) & MDS_SEQUENCE_MASK;
+            fprintf(stderr, "[MDS] Sequence error: expected %u, got %u\n",
+                    expected, pkt->sequence);
         }
+    }
+
+    /* Update sequence */
+    session->last_sequence = pkt->sequence;
+
+    /* Copy packet to output if requested */
+    if (packet_out) {
+        *packet_out = *pkt;
     }
 
     /* Upload chunk if callback is configured */
     if (session->upload_callback != NULL) {
-        ret = session->upload_callback(config->data_uri,
-                                        config->authorization,
-                                        packet.data,
-                                        packet.data_len,
-                                        session->upload_user_data);
+        int ret = session->upload_callback(config->data_uri,
+                                            config->authorization,
+                                            pkt->data,
+                                            pkt->data_len,
+                                            session->upload_user_data);
         if (ret < 0) {
             return ret;
         }
@@ -369,56 +413,37 @@ int mds_stream_process(mds_session_t *session,
     return 0;
 }
 
-/* ============================================================================
- * Utility Functions
- * ========================================================================== */
-
-bool mds_validate_sequence(uint8_t prev_seq, uint8_t new_seq) {
-    /* Expected next sequence */
-    uint8_t expected = (prev_seq + 1) & MDS_SEQUENCE_MASK;
-
-    return (new_seq == expected);
-}
-
-/* ============================================================================
- * Buffer-based API for FFI/External HID Transport
- * ========================================================================== */
-
-int mds_parse_stream_packet(const uint8_t *buffer, size_t buffer_len,
-                             mds_stream_packet_t *packet) {
-    if (buffer == NULL || packet == NULL) {
+int mds_process_stream(mds_session_t *session,
+                       const mds_device_config_t *config,
+                       int timeout_ms,
+                       mds_stream_packet_t *packet) {
+    if (session == NULL || config == NULL) {
         return -EINVAL;
     }
 
-    if (buffer_len < 1) {
-        return -EINVAL;  /* Need at least sequence byte */
+    mds_stream_packet_t pkt;
+    int ret = mds_stream_read_packet(session, &pkt, timeout_ms);
+    if (ret < 0) {
+        return ret;
     }
 
-    /* Extract sequence number */
-    packet->sequence = mds_extract_sequence(buffer[0]);
-
-    /* Copy payload data */
-    packet->data_len = buffer_len - 1;  /* Exclude sequence byte */
-    if (packet->data_len > MDS_MAX_CHUNK_DATA_LEN) {
-        packet->data_len = MDS_MAX_CHUNK_DATA_LEN;
-    }
-
-    if (packet->data_len > 0) {
-        memcpy(packet->data, &buffer[1], packet->data_len);
-    }
-
-    return 0;
+    return mds_process_packet_common(session, config, &pkt, packet);
 }
 
-uint8_t mds_get_last_sequence(mds_session_t *session) {
-    if (session == NULL) {
-        return 0;
+int mds_process_stream_from_bytes(mds_session_t *session,
+                                   const mds_device_config_t *config,
+                                   const uint8_t *buffer,
+                                   size_t buffer_len,
+                                   mds_stream_packet_t *packet) {
+    if (session == NULL || config == NULL || buffer == NULL) {
+        return -EINVAL;
     }
-    return session->last_sequence;
-}
 
-void mds_update_last_sequence(mds_session_t *session, uint8_t sequence) {
-    if (session != NULL) {
-        session->last_sequence = sequence & MDS_SEQUENCE_MASK;
+    mds_stream_packet_t pkt;
+    int ret = mds_parse_stream_packet(buffer, buffer_len, &pkt);
+    if (ret < 0) {
+        return ret;
     }
+
+    return mds_process_packet_common(session, config, &pkt, packet);
 }

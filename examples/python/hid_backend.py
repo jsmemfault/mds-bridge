@@ -158,10 +158,6 @@ class HIDBackend:
             print(f"[HID Backend] Unsupported write to report ID: 0x{report_id:02x}")
             return -22  # -EINVAL
 
-    def get_backend_struct(self):
-        """Get the backend structure for passing to mds_session_create()"""
-        return self.backend
-
     def get_backend_ref(self):
         """Get the backend reference (pointer)"""
         return ctypes.byref(self.backend)

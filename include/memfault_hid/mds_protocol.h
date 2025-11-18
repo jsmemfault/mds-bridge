@@ -356,76 +356,48 @@ int mds_stream_read_packet(mds_session_t *session,
                            int timeout_ms);
 
 /**
- * @brief Parse a stream data packet from a buffer
+ * @brief Process a stream packet from a byte buffer
  *
- * For event-driven or non-blocking I/O patterns, use this to parse stream
- * packets received directly from the transport layer. This is useful when
- * you're handling HID input reports via callbacks or events.
+ * Processes a stream packet from a buffer (event-driven I/O):
+ * 1. Parses the stream packet from the buffer
+ * 2. Validates the sequence number (logs warning if invalid)
+ * 3. Updates sequence tracking
+ * 4. Triggers upload callback if registered (with mds_set_upload_callback)
+ * 5. Optionally returns parsed packet to caller
  *
- * The buffer should contain only the stream packet payload (after the channel
- * ID / report ID byte has been stripped).
+ * This is the primary function for event-driven/non-blocking I/O patterns.
+ * Use this when you receive HID reports via callbacks or event loops.
  *
+ * @param session MDS session handle
+ * @param config Device configuration (contains URI and auth for upload callback)
  * @param buffer Buffer containing stream packet (sequence byte + data)
  * @param buffer_len Length of buffer
- * @param packet Pointer to receive parsed packet
+ * @param packet Optional pointer to receive parsed packet (NULL to skip)
  *
  * @return 0 on success, negative error code otherwise
+ *         Returns upload callback error code if upload fails
  *
  * Example:
  * @code
- * // HID input report callback
+ * // Register upload callback (optional)
+ * mds_set_upload_callback(session, my_upload_fn, NULL);
+ *
+ * // In your HID input report callback
  * void on_hid_data(uint8_t *report, size_t len) {
  *     if (report[0] == MDS_REPORT_ID_STREAM_DATA) {
- *         mds_stream_packet_t packet;
- *         int ret = mds_parse_stream_packet(&report[1], len - 1, &packet);
- *         if (ret == 0) {
- *             // Use packet.sequence, packet.data, packet.data_len
- *         }
+ *         // Process packet - upload callback triggered automatically!
+ *         int ret = mds_process_stream_from_bytes(
+ *             session, &config, &report[1], len - 1, NULL
+ *         );
  *     }
  * }
  * @endcode
  */
-int mds_parse_stream_packet(const uint8_t *buffer,
-                            size_t buffer_len,
-                            mds_stream_packet_t *packet);
-
-/**
- * @brief Validate stream packet sequence number
- *
- * Checks if the new sequence number is the expected next value after the
- * previous sequence. Sequence numbers are 5-bit values (0-31) that wrap around.
- *
- * @param prev_seq Previous sequence number
- * @param new_seq New sequence number to validate
- *
- * @return true if sequence is valid (new_seq == prev_seq + 1, with wraparound)
- *         false if there's a gap or duplicate
- */
-bool mds_validate_sequence(uint8_t prev_seq, uint8_t new_seq);
-
-/**
- * @brief Get last received sequence number
- *
- * Returns the sequence number of the last successfully received packet.
- * Useful for validating sequences when parsing packets manually.
- *
- * @param session MDS session handle
- *
- * @return Last sequence number, or MDS_SEQUENCE_MAX if no packets received yet
- */
-uint8_t mds_get_last_sequence(mds_session_t *session);
-
-/**
- * @brief Update last received sequence number
- *
- * Updates the session's tracking of the last received sequence number.
- * Call this after successfully processing a packet parsed with
- * mds_parse_stream_packet().
- *
- * @param session MDS session handle
- * @param sequence New sequence number to record
- */
-void mds_update_last_sequence(mds_session_t *session, uint8_t sequence);
+int mds_process_stream_from_bytes(mds_session_t *session,
+                                   const mds_device_config_t *config,
+                                   const uint8_t *buffer,
+                                   size_t buffer_len,
+                                   mds_stream_packet_t *packet);
 
 /* ============================================================================
  * Chunk Upload
@@ -436,7 +408,7 @@ void mds_update_last_sequence(mds_session_t *session, uint8_t sequence);
  *
  * Registers a callback that will be invoked to upload each received chunk.
  * This enables automatic chunk forwarding to the Memfault cloud when using
- * mds_stream_process().
+ * mds_process_stream() or mds_process_stream_from_bytes().
  *
  * @param session MDS session handle
  * @param callback Upload callback function (NULL to disable)
@@ -449,28 +421,45 @@ int mds_set_upload_callback(mds_session_t *session,
                              void *user_data);
 
 /**
- * @brief Process stream packets with automatic upload
+ * @brief Process a stream packet by reading from the device
  *
- * Reads stream packets and automatically uploads them using the configured
- * upload callback. This is a convenience function that combines packet reading,
- * sequence validation, and chunk uploading.
+ * Reads a stream packet from the device and processes it:
+ * 1. Reads packet from device (blocking with timeout)
+ * 2. Validates the sequence number (logs warning if invalid)
+ * 3. Updates sequence tracking
+ * 4. Triggers upload callback if registered (with mds_set_upload_callback)
+ * 5. Optionally returns parsed packet to caller
  *
- * Call this in a loop after enabling streaming. It will:
- * 1. Read a packet from the stream
- * 2. Validate the sequence number (logs warning if invalid)
- * 3. Upload the chunk via the callback (if configured)
+ * This is the primary function for blocking I/O patterns. Call this in a loop
+ * after enabling streaming.
  *
  * @param session MDS session handle
- * @param config Device configuration (contains URI and auth)
+ * @param config Device configuration (contains URI and auth for upload callback)
  * @param timeout_ms Timeout in milliseconds for reading packets
+ * @param packet Optional pointer to receive parsed packet (NULL to skip)
  *
  * @return 0 on success, negative error code otherwise
  *         -ETIMEDOUT if no data available within timeout
  *         Returns upload callback error code if upload fails
+ *
+ * Example:
+ * @code
+ * // Register upload callback (optional)
+ * mds_set_upload_callback(session, my_upload_fn, NULL);
+ *
+ * // Process packets in a loop
+ * while (running) {
+ *     int ret = mds_process_stream(session, &config, 1000, NULL);
+ *     if (ret == 0) {
+ *         // Packet received and upload callback was triggered
+ *     }
+ * }
+ * @endcode
  */
-int mds_stream_process(mds_session_t *session,
-                        const mds_device_config_t *config,
-                        int timeout_ms);
+int mds_process_stream(mds_session_t *session,
+                       const mds_device_config_t *config,
+                       int timeout_ms,
+                       mds_stream_packet_t *packet);
 
 
 #ifdef __cplusplus

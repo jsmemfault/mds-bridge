@@ -151,7 +151,7 @@ int main(void) {
     printf("  Processing up to %d chunks...\n", max_chunks);
 
     while (chunks_processed < max_chunks && timeout_count < max_timeouts) {
-        ret = mds_stream_process(session, &config, 100);  /* 100ms timeout */
+        ret = mds_process_stream(session, &config, 100, NULL);  /* 100ms timeout */
 
         if (ret == 0) {
             /* Successfully processed a chunk */

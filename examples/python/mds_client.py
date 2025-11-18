@@ -19,6 +19,7 @@ from bindings import (
     lib,
     MDS_REPORT_ID,
     MDS_SEQUENCE_MAX,
+    MDS_CHUNK_UPLOAD_CALLBACK,
     mds_device_config_t,
     mds_stream_packet_t,
 )
@@ -32,14 +33,6 @@ class DeviceConfig:
     device_identifier: str
     data_uri: str
     authorization: str
-
-
-@dataclass
-class StreamPacket:
-    """Parsed stream packet"""
-    sequence: int
-    data: bytes
-    length: int
 
 
 class MDSClient:
@@ -63,8 +56,14 @@ class MDSClient:
         self.backend: Optional[HIDBackend] = None
         self.session: Optional[ctypes.c_void_p] = None
         self.config: Optional[DeviceConfig] = None
+        self.config_struct: Optional[mds_device_config_t] = None  # C struct for callbacks
         self.streaming = False
-        self.on_chunk: Optional[Callable[[StreamPacket], None]] = None
+        self.upload_callback = None  # Store C callback to prevent garbage collection
+        self.stats = {
+            'chunks_received': 0,
+            'chunks_uploaded': 0,
+            'upload_errors': 0,
+        }
 
     def initialize(self) -> None:
         """Initialize the MDS session with custom backend"""
@@ -110,7 +109,8 @@ class MDSClient:
         if result < 0:
             raise RuntimeError(f"Failed to read device config: {result}")
 
-        # Extract configuration from struct
+        # Store both the C struct (for callbacks) and Python dataclass (for convenience)
+        self.config_struct = config
         self.config = DeviceConfig(
             supported_features=config.supported_features,
             device_identifier=config.device_identifier.decode('utf-8').rstrip('\x00'),
@@ -151,6 +151,79 @@ class MDSClient:
         self.streaming = False
         print("[MDSClient] Streaming disabled")
 
+    def enable_upload(self, upload_enabled: bool = True) -> None:
+        """
+        Enable or disable chunk upload to Memfault cloud.
+
+        When enabled, chunks are automatically uploaded via the C library's
+        upload callback mechanism.
+
+        Args:
+            upload_enabled: True to enable upload, False to disable
+        """
+        if upload_enabled:
+            print("[MDSClient] Registering upload callback...")
+
+            # Create C callback function
+            @MDS_CHUNK_UPLOAD_CALLBACK
+            def upload_callback_impl(uri, auth_header, chunk_data, chunk_len, user_data):
+                try:
+                    self.stats['chunks_received'] += 1
+
+                    # Convert C strings and data to Python
+                    uri_str = uri.decode('utf-8')
+                    auth_str = auth_header.decode('utf-8')
+                    data_bytes = bytes(chunk_data[:chunk_len])
+
+                    # Parse authorization header
+                    auth_parts = auth_str.split(':', 1)
+                    headers = {
+                        'Content-Type': 'application/octet-stream',
+                    }
+                    if len(auth_parts) == 2:
+                        headers[auth_parts[0].strip()] = auth_parts[1].strip()
+
+                    # Upload to Memfault cloud
+                    response = requests.post(
+                        uri_str,
+                        headers=headers,
+                        data=data_bytes,
+                        timeout=10
+                    )
+                    response.raise_for_status()
+
+                    self.stats['chunks_uploaded'] += 1
+                    print(f"[MDSClient] Chunk uploaded: {chunk_len} bytes "
+                          f"({self.stats['chunks_uploaded']}/{self.stats['chunks_received']})")
+                    return 0
+
+                except requests.RequestException as e:
+                    self.stats['upload_errors'] += 1
+                    print(f"[MDSClient] Failed to upload chunk: {e}")
+                    return -5  # -EIO
+                except Exception as e:
+                    self.stats['upload_errors'] += 1
+                    print(f"[MDSClient] Unexpected error in upload callback: {e}")
+                    return -5  # -EIO
+
+            # Store callback to prevent garbage collection
+            self.upload_callback = upload_callback_impl
+
+            # Register with C library
+            result = lib.mds_set_upload_callback(self.session, self.upload_callback, None)
+            if result < 0:
+                raise RuntimeError(f"Failed to register upload callback: {result}")
+
+            print("[MDSClient] Upload callback registered")
+        else:
+            # Unregister callback
+            result = lib.mds_set_upload_callback(self.session, None, None)
+            if result < 0:
+                raise RuntimeError(f"Failed to unregister upload callback: {result}")
+
+            self.upload_callback = None
+            print("[MDSClient] Upload callback unregistered")
+
     def process(self, data: bytes) -> bool:
         """
         Process transport data packet.
@@ -186,22 +259,15 @@ class MDSClient:
         self._process_stream_payload(payload)
         return True
 
-    def process_stream_data(self, payload: bytes) -> None:
-        """
-        Process MDS stream data payload directly.
-
-        Use this for transports that pre-demultiplex channels (e.g., BLE GATT
-        characteristics). When you receive data from the MDS stream characteristic,
-        call this method directly.
-
-        Args:
-            payload: MDS stream packet payload (without channel ID prefix)
-        """
-        self._process_stream_payload(payload)
-
     def _process_stream_payload(self, payload: bytes) -> None:
         """
         Internal method to process MDS stream packet payload.
+
+        Uses the C library's mds_process_stream_packet_and_upload() which:
+        - Parses the packet
+        - Validates sequence number
+        - Updates sequence tracking
+        - Triggers upload callback if registered
 
         Args:
             payload: Stream packet payload (sequence + data)
@@ -209,97 +275,26 @@ class MDSClient:
         if not payload:
             return
 
-        # Parse the stream packet using buffer-based API
-        # (We can't use mds_stream_read_packet here because it would block)
+        # Convert to C buffer
         packet_buffer = (ctypes.c_uint8 * len(payload))(*payload)
-        packet = mds_stream_packet_t()
 
-        result = lib.mds_parse_stream_packet(
-            packet_buffer, len(payload), ctypes.byref(packet)
+        # Process packet and trigger upload callback (if registered)
+        # The C library handles everything!
+        result = lib.mds_process_stream_from_bytes(
+            self.session,
+            ctypes.byref(self.config_struct),
+            packet_buffer,
+            len(payload),
+            None  # Don't need packet output
         )
 
         if result < 0:
-            print(f"[MDSClient] Failed to parse stream packet: {result}")
+            print(f"[MDSClient] Failed to process stream packet: {result}")
             return
-
-        # Validate sequence using C library
-        last_seq = lib.mds_get_last_sequence(self.session)
-        if last_seq != MDS_SEQUENCE_MAX:
-            is_valid = lib.mds_validate_sequence(last_seq, packet.sequence)
-            if not is_valid:
-                expected = (last_seq + 1) & 0x1F
-                print(f"[MDSClient] Sequence error: expected {expected}, got {packet.sequence}")
-
-        # Update last sequence
-        lib.mds_update_last_sequence(self.session, packet.sequence)
-
-        # Extract chunk data
-        chunk_data = bytes(packet.data[:packet.data_len])
-
-        print(f"[MDSClient] Received chunk: seq={packet.sequence}, len={packet.data_len}")
-
-        stream_packet = StreamPacket(
-            sequence=packet.sequence,
-            data=chunk_data,
-            length=packet.data_len
-        )
-
-        # Trigger callback if registered
-        if self.on_chunk:
-            self.on_chunk(stream_packet)
-
-    def upload_chunk(self, chunk_data: bytes) -> bool:
-        """
-        Upload chunk data to Memfault cloud
-
-        Args:
-            chunk_data: Chunk data to upload
-
-        Returns:
-            True if upload succeeded, False otherwise
-        """
-        if not self.config:
-            raise RuntimeError("Device config not loaded")
-
-        # Parse authorization header (format: "HeaderName:HeaderValue" or "HeaderName: HeaderValue")
-        auth_parts = self.config.authorization.split(':', 1)
-        headers = {
-            'Content-Type': 'application/octet-stream',
-        }
-        if len(auth_parts) == 2:
-            headers[auth_parts[0].strip()] = auth_parts[1].strip()
-
-        try:
-            response = requests.post(
-                self.config.data_uri,
-                headers=headers,
-                data=chunk_data,
-                timeout=10
-            )
-            response.raise_for_status()
-            print(f"[MDSClient] Chunk uploaded: {len(chunk_data)} bytes")
-            return True
-        except requests.RequestException as e:
-            print(f"[MDSClient] Failed to upload chunk: {e}")
-            return False
-
-    def set_chunk_callback(self, callback: Callable[[StreamPacket], None]) -> None:
-        """
-        Set callback for received chunks
-
-        Args:
-            callback: Function to call when chunk is received.
-                     Takes StreamPacket as argument.
-        """
-        self.on_chunk = callback
 
     def get_config(self) -> Optional[DeviceConfig]:
         """Get device configuration"""
         return self.config
-
-    def is_streaming(self) -> bool:
-        """Check if streaming is enabled"""
-        return self.streaming
 
     def destroy(self) -> None:
         """Clean up resources"""
@@ -316,11 +311,3 @@ class MDSClient:
         if self.backend:
             self.backend.destroy()
             self.backend = None
-
-    def __enter__(self):
-        """Context manager entry"""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        self.destroy()

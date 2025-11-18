@@ -1,5 +1,5 @@
 /**
- * MDS Gateway Example - Using Custom Backend
+ * MDS Gateway Example- Using Custom Backend
  *
  * This example demonstrates the pluggable backend architecture by creating
  * a custom Node.js backend that implements the MDS backend interface.

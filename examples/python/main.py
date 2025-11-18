@@ -24,7 +24,7 @@ import argparse
 from typing import Optional
 from dataclasses import dataclass
 
-from mds_client import MDSClient, StreamPacket
+from mds_client import MDSClient
 
 
 # Configuration - Default values, can be overridden via CLI
@@ -95,17 +95,15 @@ Examples:
 
 
 class Application:
-    """Main application - coordinates custom app and MDS"""
+    """Main application - coordinates MDS protocol"""
 
     def __init__(self):
         self.device: Optional[hid.device] = None
         self.mds_client: Optional[MDSClient] = None
-        self.custom_app: Optional[CustomHIDApp] = None
         self.running = False
         self.stats = {
             'chunks_received': 0,
             'chunks_uploaded': 0,
-            'custom_reports': 0,
         }
 
     def open_device(self) -> None:
@@ -153,19 +151,13 @@ class Application:
         print(f"  Auth: {config.authorization[:30]}...")
         print(f"  Features: 0x{config.supported_features:08x}\n")
 
-        # Set up chunk callback
-        def on_chunk(packet: StreamPacket):
-            self.stats['chunks_received'] += 1
-            print(f"[MDS] Chunk received: seq={packet.sequence}, len={packet.length} bytes")
-
-            # Upload chunk if enabled
-            if CONFIG.upload_chunks:
-                success = self.mds_client.upload_chunk(packet.data)
-                if success:
-                    self.stats['chunks_uploaded'] += 1
-                    print("[MDS] Chunk uploaded successfully")
-
-        self.mds_client.set_chunk_callback(on_chunk)
+        # Enable upload to Memfault cloud if requested
+        # The C library will automatically handle chunk upload via callback
+        if CONFIG.upload_chunks:
+            self.mds_client.enable_upload(True)
+            print("[Application] Chunk upload to Memfault cloud is ENABLED\n")
+        else:
+            print("[Application] Chunk upload is DISABLED (dry-run mode)\n")
 
     def handle_hid_data(self, data: bytes) -> None:
         """

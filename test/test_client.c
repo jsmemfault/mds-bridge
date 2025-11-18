@@ -7,13 +7,19 @@
 
 #include "../src/memfault_hid_internal.h"
 #include "memfault_hid/mds_protocol.h"
-#include "memfault_hid/mds_protocol_internal.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #define TEST_VID 0x1234
 #define TEST_PID 0x5678
+
+/* Local helper for sequence validation (replicates internal logic) */
+static bool validate_sequence(uint8_t prev_seq, uint8_t new_seq) {
+    uint8_t expected = (prev_seq + 1) & MDS_SEQUENCE_MASK;
+    return (new_seq == expected);
+}
 
 #define REPORT_ID_INPUT_1     0x01
 #define REPORT_ID_OUTPUT_1    0x02
@@ -326,7 +332,7 @@ int main(void) {
                 expected_sequence = packet.sequence;
                 TEST_ASSERT(true, "First packet received");
             } else {
-                bool seq_valid = mds_validate_sequence(expected_sequence, packet.sequence);
+                bool seq_valid = validate_sequence(expected_sequence, packet.sequence);
                 TEST_ASSERT(seq_valid, "Sequence number is valid");
                 expected_sequence = packet.sequence;
             }
@@ -357,21 +363,21 @@ int main(void) {
     TEST_START("MDS Sequence Validation");
 
     // Test wrapping behavior
-    bool valid = mds_validate_sequence(30, 31);
+    bool valid = validate_sequence(30, 31);
     TEST_ASSERT(valid, "Sequence 30->31 is valid");
 
-    valid = mds_validate_sequence(31, 0);
+    valid = validate_sequence(31, 0);
     TEST_ASSERT(valid, "Sequence wraps from 31->0");
 
-    valid = mds_validate_sequence(0, 1);
+    valid = validate_sequence(0, 1);
     TEST_ASSERT(valid, "Sequence 0->1 is valid");
 
     // Test dropped packet detection
-    valid = mds_validate_sequence(5, 7);
+    valid = validate_sequence(5, 7);
     TEST_ASSERT(!valid, "Sequence 5->7 detects dropped packet");
 
     // Test duplicate detection
-    valid = mds_validate_sequence(10, 10);
+    valid = validate_sequence(10, 10);
     TEST_ASSERT(!valid, "Sequence 10->10 detects duplicate");
 
     /* Test 19: MDS Stream Disable */

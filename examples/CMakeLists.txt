@@ -39,11 +39,6 @@ configure_file(
     ${PYTHON_EXAMPLE_DIR}/requirements.txt
     COPYONLY
 )
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/python/test_bindings.py
-    ${PYTHON_EXAMPLE_DIR}/test_bindings.py
-    COPYONLY
-)
 
 # For Python, just copy bindings.py - it already has logic to find the library
 configure_file(
