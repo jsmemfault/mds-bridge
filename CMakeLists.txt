@@ -28,7 +28,6 @@ find_package(CURL REQUIRED)
 # Source files
 set(MEMFAULT_HID_SOURCES
     src/memfault_hid.c
-    src/memfault_hid_transport.c
     src/mds_protocol.c
     src/mds_backend_hid.c
     src/chunks_uploader.c

@@ -14,7 +14,6 @@ add_executable(test_hid
     test_client.c
     mock_hidapi.c
     ${CMAKE_SOURCE_DIR}/src/memfault_hid.c
-    ${CMAKE_SOURCE_DIR}/src/memfault_hid_transport.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
     ${CMAKE_SOURCE_DIR}/src/mds_backend_hid.c
 )
@@ -71,7 +70,6 @@ add_executable(test_mds_e2e
     mock_hidapi.c
     mock_libcurl.c
     ${CMAKE_SOURCE_DIR}/src/memfault_hid.c
-    ${CMAKE_SOURCE_DIR}/src/memfault_hid_transport.c
     ${CMAKE_SOURCE_DIR}/src/mds_protocol.c
     ${CMAKE_SOURCE_DIR}/src/mds_backend_hid.c
     ${CMAKE_SOURCE_DIR}/src/chunks_uploader.c
