@@ -8,20 +8,70 @@ A cross-platform C library implementing the Memfault Diagnostic Service (MDS) pr
 - **Cross-platform support**: Windows, macOS, and Linux
 - **Built on HIDAPI**: Reliable cross-platform HID communication via built-in HID backend
 - **HTTP chunk uploader**: Built-in libcurl-based uploader for Memfault cloud integration
-- **Simple API**: Simplified session creation with automatic device management
+- **Simple high-level API**: Automatic device management and initialization
 - **Pure C implementation**: Maximum compatibility and portability
 - **Comprehensive testing**: Full test suite with mocked dependencies (no hardware required)
+- **Language bindings**: Python and Node.js examples with native bindings
 
 ## Architecture
 
-The library is organized into layers:
+The library uses a layered architecture with pluggable backends:
 
-- **MDS Protocol Layer**: Transport-agnostic implementation of the Memfault Diagnostic Service protocol
-- **Backend Interface**: Pluggable transport abstraction (READ/WRITE operations)
-- **HID Backend**: Built-in implementation using HIDAPI for USB HID devices
-- **Chunks Uploader**: HTTP uploader for Memfault cloud integration
+```
+┌─────────────────────────────────────────────────┐
+│           Application Layer                     │
+│  (Your code, Python/Node.js bindings, etc.)    │
+└─────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────┐
+│        MDS Protocol Layer (mds_protocol.h)      │
+│  • Session management                           │
+│  • Device configuration (features, URI, auth)   │
+│  • Stream control (enable/disable)              │
+│  • Packet processing (parse, validate, upload)  │
+│  • Sequence tracking                            │
+└─────────────────────────────────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────┐
+│      Backend Interface (mds_backend.h)          │
+│  • read(report_id, buffer, timeout)             │
+│  • write(report_id, buffer)                     │
+│  • destroy()                                    │
+└─────────────────────────────────────────────────┘
+           ↓                    ↓
+  ┌────────────────┐   ┌──────────────────┐
+  │  HID Backend   │   │  Custom Backends │
+  │  (built-in)    │   │  (Serial, BLE,   │
+  │                │   │   WebSocket...)  │
+  └────────────────┘   └──────────────────┘
+           ↓
+  ┌────────────────┐
+  │    HIDAPI      │
+  │  (USB HID I/O) │
+  └────────────────┘
+```
 
-This architecture enables support for different transport mechanisms (Serial, BLE, WebSocket, etc.) by implementing the simple backend interface.
+### Backend Architecture
+
+The MDS protocol is completely **transport-agnostic** through the backend interface. Any transport that can provide READ/WRITE operations can be used:
+
+**Built-in HID Backend** (`mds_backend_hid.c`):
+- Implements the backend interface using HIDAPI
+- Maps MDS report IDs to HID GET_FEATURE/SET_FEATURE/READ operations
+- Automatically initialized when using `mds_session_create_hid()`
+
+**Custom Backend Support**:
+- Implement the `mds_backend_ops_t` vtable with read/write/destroy functions
+- Pass your backend to `mds_session_create()` for full protocol support
+- Examples: Serial port, BLE GATT, WebSocket, or event-driven I/O (see Python/Node.js examples)
+
+**Event-driven I/O**:
+- For event-driven transports (node-hid, hidapi in non-blocking mode), you can:
+  - Create a session with NULL backend: `mds_session_create(NULL, &session)`
+  - Use `mds_process_stream_from_bytes()` to process pre-received data
+  - The C library handles parsing, sequence validation, and upload callbacks
+
+This design enables the same MDS protocol code to work across different transports without modification.
 
 ## Building
 
@@ -108,7 +158,7 @@ The primary use case is implementing the Memfault Diagnostic Service (MDS) proto
 #include "memfault_hid/mds_protocol.h"
 
 int main(void) {
-    // Create MDS session (opens HID device automatically)
+    // Create MDS session (opens HID device and initializes automatically)
     mds_session_t *session = NULL;
     int ret = mds_session_create_hid(0x1234, 0x5678, NULL, &session);
     if (ret != 0) {
@@ -121,94 +171,77 @@ int main(void) {
     mds_read_device_config(session, &config);
     printf("Device ID: %s\n", config.device_identifier);
     printf("Data URI: %s\n", config.data_uri);
-    printf("Authorization: %s\n", config.authorization);
 
     // Enable streaming
     mds_stream_enable(session);
 
-    // Read diagnostic chunk packets
-    mds_stream_packet_t packet;
-    while (mds_stream_read_packet(session, &packet, 5000) == 0) {
-        printf("Received packet (seq=%d, len=%zu)\n",
-               packet.sequence, packet.data_len);
-
-        // Forward packet.data to Memfault cloud
-        // upload_chunk(config.data_uri, config.authorization,
-        //              packet.data, packet.data_len);
-
-        // Validate sequence to detect dropped packets
-        if (prev_seq_valid) {
-            if (!mds_validate_sequence(prev_seq, packet.sequence)) {
-                printf("Warning: Dropped or duplicate packet detected\n");
-            }
+    // Process stream packets with automatic upload
+    while (running) {
+        mds_stream_packet_t packet;
+        ret = mds_process_stream(session, &config, 5000, &packet);
+        if (ret == 0) {
+            printf("Received chunk: seq=%d, len=%zu\n",
+                   packet.sequence, packet.data_len);
+            // Upload callback (if registered) was automatically called
         }
-        prev_seq = packet.sequence;
-        prev_seq_valid = true;
     }
 
-    // Disable streaming
-    mds_stream_disable(session);
-
-    // Cleanup (also closes HID device)
+    // Cleanup (disables streaming and closes device automatically)
     mds_session_destroy(session);
-
     return 0;
 }
 ```
 
-#### MDS Protocol Overview
+### MDS Protocol Overview
 
 The MDS protocol uses HID reports to communicate diagnostic data:
 
-- **Feature Reports** (Configuration & Control):
-  - `0x01`: Supported features bitmask (read-only)
-  - `0x02`: Device identifier string (read-only)
-  - `0x03`: Data URI for chunk upload (read-only)
-  - `0x04`: Authorization header (read-only, e.g., project key)
-  - `0x05`: Stream control (read-write, enable/disable streaming)
+**Feature Reports** (Configuration & Control):
+- `0x01`: Supported features bitmask (read-only)
+- `0x02`: Device identifier string (read-only)
+- `0x03`: Data URI for chunk upload (read-only)
+- `0x04`: Authorization header (read-only, e.g., project key)
+- `0x05`: Stream control (read-write, enable/disable streaming)
 
-- **Input Reports** (Device → Host):
-  - `0x06`: Stream data packets with diagnostic chunks
+**Input Reports** (Device → Host):
+- `0x06`: Stream data packets with diagnostic chunks
 
 Each stream packet includes:
 - **Sequence counter** (5-bit, 0-31, wraps around) for detecting dropped packets
 - **Chunk data payload** (up to 63 bytes per packet)
 
-#### MDS API Functions
+### MDS API Functions
 
 **Session Management:**
-- `mds_session_create_hid()` - Create MDS session with HID backend (VID/PID)
-- `mds_session_create_hid_path()` - Create MDS session with HID backend (device path)
-- `mds_session_create()` - Create MDS session with custom backend (advanced)
-- `mds_session_destroy()` - Destroy MDS session (also closes device)
+- `mds_session_create_hid(vid, pid, serial, &session)` - Create session with HID backend
+- `mds_session_create_hid_path(path, &session)` - Create session with HID backend (device path)
+- `mds_session_create(backend, &session)` - Create session with custom backend
+- `mds_session_destroy(session)` - Destroy session and cleanup
 
 **Device Configuration:**
-- `mds_read_device_config()` - Read all configuration
-- `mds_get_supported_features()` - Get feature bitmask
-- `mds_get_device_identifier()` - Get device ID string
-- `mds_get_data_uri()` - Get upload URI
-- `mds_get_authorization()` - Get auth header
+- `mds_read_device_config(session, &config)` - Read all configuration
+- `mds_get_supported_features(session, &features)` - Get feature bitmask
+- `mds_get_device_identifier(session, buffer, size)` - Get device ID
+- `mds_get_data_uri(session, buffer, size)` - Get upload URI
+- `mds_get_authorization(session, buffer, size)` - Get auth header
 
 **Stream Control:**
-- `mds_stream_enable()` - Enable diagnostic data streaming
-- `mds_stream_disable()` - Disable streaming
+- `mds_stream_enable(session)` - Enable diagnostic data streaming
+- `mds_stream_disable(session)` - Disable streaming
 
 **Data Reception:**
-- `mds_stream_read_packet()` - Read stream data packet (blocking)
-- `mds_stream_process()` - Read and automatically upload packets
-- `mds_validate_sequence()` - Validate sequence number
+- `mds_stream_read_packet(session, &packet, timeout_ms)` - Read packet (blocking I/O)
+- `mds_process_stream(session, &config, timeout_ms, &packet)` - Read + validate + upload
+- `mds_process_stream_from_bytes(session, &config, buffer, len, &packet)` - Parse pre-received data
 
 **Chunk Upload:**
-- `mds_set_upload_callback()` - Register callback for chunk uploads
-- `mds_stream_process()` - Convenience function combining read + upload
+- `mds_set_upload_callback(session, callback, user_data)` - Register upload callback
 
-#### Uploading Chunks to Memfault Cloud
+### Uploading Chunks to Memfault Cloud
 
-The library includes a built-in HTTP uploader using libcurl, and also supports custom upload callbacks for maximum flexibility.
+The library supports both custom upload callbacks and a built-in HTTP uploader.
 
 **Option 1: Custom Upload Callback**
-
-Implement your own upload function using any HTTP library:
 
 ```c
 int my_upload_callback(const char *uri, const char *auth_header,
@@ -220,76 +253,56 @@ int my_upload_callback(const char *uri, const char *auth_header,
     return 0; /* Return 0 on success, negative on error */
 }
 
-// Register your callback
+// Register callback
 mds_set_upload_callback(session, my_upload_callback, my_context);
 
-// Process streams with automatic upload
+// Process streams - callback is automatically invoked
 while (running) {
-    int ret = mds_stream_process(session, &config, 5000);
-    if (ret == 0) {
-        printf("Chunk uploaded!\n");
-    }
+    mds_process_stream(session, &config, 5000, NULL);
 }
 ```
 
 **Option 2: Built-in HTTP Uploader**
-
-Use the built-in libcurl-based uploader:
 
 ```c
 #include "memfault_hid/chunks_uploader.h"
 
 // Create uploader
 chunks_uploader_t *uploader = chunks_uploader_create();
-chunks_uploader_set_verbose(uploader, true);  /* Optional: enable debug output */
+chunks_uploader_set_verbose(uploader, true);
 
 // Register built-in uploader
 mds_set_upload_callback(session, chunks_uploader_callback, uploader);
 
-// Process streams - chunks are automatically uploaded via HTTP
+// Process streams - chunks are automatically uploaded
 while (running) {
-    int ret = mds_stream_process(session, &config, 5000);
-    if (ret == 0) {
-        // Get stats
-        chunks_upload_stats_t stats;
-        chunks_uploader_get_stats(uploader, &stats);
-        printf("Uploaded: %zu chunks, %zu bytes\n",
-               stats.chunks_uploaded, stats.bytes_uploaded);
-    }
+    mds_process_stream(session, &config, 5000, NULL);
 }
+
+// Get stats
+chunks_upload_stats_t stats;
+chunks_uploader_get_stats(uploader, &stats);
+printf("Uploaded: %zu chunks, %zu bytes\n",
+       stats.chunks_uploaded, stats.bytes_uploaded);
 
 // Cleanup
 chunks_uploader_destroy(uploader);
 ```
 
-### Report Filtering
-
-The library supports report filtering, allowing it to handle only specific Report IDs while other parts of your application handle different Report IDs:
-
-```c
-// Configure the library to only handle Report IDs 0x01-0x0F
-uint8_t my_report_ids[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                            0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-
-memfault_hid_report_filter_t filter = {
-    .report_ids = my_report_ids,
-    .num_report_ids = sizeof(my_report_ids),
-    .filter_enabled = true
-};
-
-memfault_hid_set_report_filter(device, &filter);
-
-// Now the library will only process reports with IDs 0x01-0x0F
-// Other Report IDs will return MEMFAULT_HID_ERROR_INVALID_REPORT_TYPE
-```
-
 ### Device Enumeration
 
+For applications that need to list/select HID devices:
+
 ```c
+#include "memfault_hid/memfault_hid.h"
+
+// Initialize HID library
+memfault_hid_init();
+
+// Enumerate devices
 memfault_hid_device_info_t *devices = NULL;
 size_t num_devices = 0;
 
-// Enumerate all devices with VID=0x1234, PID=0x5678
 int ret = memfault_hid_enumerate(0x1234, 0x5678, &devices, &num_devices);
 if (ret == MEMFAULT_HID_SUCCESS) {
     for (size_t i = 0; i < num_devices; i++) {
@@ -299,19 +312,77 @@ if (ret == MEMFAULT_HID_SUCCESS) {
                devices[i].product_id);
         printf("  Path: %s\n", devices[i].path);
     }
-
     memfault_hid_free_device_list(devices);
 }
+
+// Cleanup
+memfault_hid_exit();
+```
+
+**Note**: When using `mds_session_create_hid()`, the HID library is initialized automatically.
+
+### Custom Backend Example
+
+Implement your own transport by providing the backend vtable:
+
+```c
+#include "memfault_hid/mds_backend.h"
+
+// Your backend state
+typedef struct {
+    int serial_fd;  // Or BLE handle, WebSocket, etc.
+} my_backend_t;
+
+// Backend read operation
+int my_backend_read(void *impl_data, uint8_t report_id,
+                    uint8_t *buffer, size_t length, int timeout_ms) {
+    my_backend_t *backend = impl_data;
+    // Read from your transport
+    return bytes_read;
+}
+
+// Backend write operation
+int my_backend_write(void *impl_data, uint8_t report_id,
+                     const uint8_t *buffer, size_t length) {
+    my_backend_t *backend = impl_data;
+    // Write to your transport
+    return bytes_written;
+}
+
+// Backend cleanup
+void my_backend_destroy(void *impl_data) {
+    my_backend_t *backend = impl_data;
+    // Close/cleanup your transport
+    free(backend);
+}
+
+// Create backend
+mds_backend_ops_t ops = {
+    .read = my_backend_read,
+    .write = my_backend_write,
+    .destroy = my_backend_destroy
+};
+
+my_backend_t *backend_impl = /* initialize your transport */;
+
+mds_backend_t backend = {
+    .ops = &ops,
+    .impl_data = backend_impl
+};
+
+// Create MDS session with your backend
+mds_session_t *session;
+mds_session_create(&backend, &session);
 ```
 
 ## Examples
 
-The library includes MDS example programs:
+The library includes example programs in C, Python, and Node.js:
+
+### C Examples
 
 - **`mds_gateway`**: Full MDS gateway that uploads diagnostic chunks to Memfault cloud
 - **`mds_monitor`**: Real-time monitor for inspecting MDS stream data
-
-To run the examples after building:
 
 ```bash
 # MDS gateway - upload chunks to Memfault cloud
@@ -327,79 +398,50 @@ To run the examples after building:
 ./build/examples/mds_monitor
 ```
 
-See [examples/README.md](examples/README.md) for detailed documentation on each example.
+### Python Example
 
-## API Reference
+Uses ctypes bindings with a custom Python backend:
 
-### Initialization
+```bash
+cd build/examples/python
+python3 main.py 2fe3 0007
+```
 
-- `memfault_hid_init()` - Initialize the library
-- `memfault_hid_exit()` - Clean up and shutdown
+The Python example demonstrates:
+- Custom backend implementation bridging hidapi-python with the C library
+- Event-driven I/O using `mds_process_stream_from_bytes()`
+- Upload callback registration from Python
 
-### Device Management
+### Node.js Example
 
-- `memfault_hid_enumerate()` - Enumerate devices by VID/PID
-- `memfault_hid_free_device_list()` - Free enumeration results
-- `memfault_hid_open()` - Open device by VID/PID
-- `memfault_hid_open_path()` - Open device by path
-- `memfault_hid_close()` - Close device
-- `memfault_hid_get_device_info()` - Get device information
+Uses N-API native addon:
 
-### Report Filtering
+```bash
+cd build/examples/nodejs
+npm start -- 2fe3 0007
+```
 
-- `memfault_hid_set_report_filter()` - Configure report filtering
-- `memfault_hid_get_report_filter()` - Get filter configuration
+The Node.js example demonstrates:
+- N-API addon for native C bindings
+- Integration with node-hid for HID I/O
+- Event-driven processing with the MDS protocol
 
-### Communication
+See [examples/README.md](examples/README.md) for detailed documentation.
 
-- `memfault_hid_write_report()` - Write an output report
-- `memfault_hid_read_report()` - Read an input report
-- `memfault_hid_get_feature_report()` - Get a feature report
-- `memfault_hid_set_feature_report()` - Set a feature report
+## API Headers
 
-### Utilities
+The library provides three public headers:
 
-- `memfault_hid_error_string()` - Get error description
-- `memfault_hid_version_string()` - Get library version
-- `memfault_hid_set_nonblocking()` - Set non-blocking mode
+- **`memfault_hid/memfault_hid.h`** - Device enumeration and library initialization
+- **`memfault_hid/mds_protocol.h`** - High-level MDS protocol API
+- **`memfault_hid/mds_backend.h`** - Backend interface for custom transports
+- **`memfault_hid/chunks_uploader.h`** - Built-in HTTP uploader
 
-## Integration into Applications
-
-This library is designed to be integrated into larger applications that may have their own HID communication needs. Key integration points:
-
-1. **Report ID Filtering**: Use `memfault_hid_set_report_filter()` to specify which Report IDs this library should handle
-2. **Multiple Devices**: The library supports opening multiple devices simultaneously
-3. **Non-blocking I/O**: Use `memfault_hid_set_nonblocking()` for non-blocking operation
-4. **Error Handling**: All functions return error codes that can be converted to strings with `memfault_hid_error_string()`
-
-## Platform Notes
-
-### Windows
-
-- Requires Windows 7 or later
-- No driver installation required for most HID devices
-- May require administrator privileges for some devices
-
-### macOS
-
-- Requires macOS 10.9 or later
-- Uses IOKit framework (linked automatically by CMake)
-- No special permissions required for most HID devices
-
-### Linux
-
-- Requires kernel 2.6.39 or later
-- May require udev rules for non-root access
-- Example udev rule (create `/etc/udev/rules.d/99-hidraw-permissions.rules`):
-  ```
-  KERNEL=="hidraw*", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", MODE="0666"
-  ```
+Most applications only need `mds_protocol.h`.
 
 ## Testing
 
 The library includes comprehensive test suites with mocked dependencies (no hardware or network required):
-
-### Run All Tests
 
 ```bash
 cd build
@@ -426,34 +468,38 @@ Test project /path/to/build
 - **Upload Tests** (`test_upload`): 12 tests covering HTTP upload functionality with mock libcurl
 - **E2E Integration Test** (`test_mds_e2e`): Complete gateway workflow test with mocked device and cloud
 
-All tests use mocked implementations (no hardware or network required).
-
-### Run Individual Suites
-
-```bash
-# Run HID tests only
-./test/test_hid
-
-# Run upload tests only
-./test/test_upload
-
-# Run end-to-end integration test
-./test/test_mds_e2e
-
-# Run with CTest for detailed output
-ctest --output-on-failure
-ctest -R HID_Tests --verbose
-```
-
 See [test/README.md](test/README.md) for detailed testing documentation.
+
+## Platform Notes
+
+### Windows
+
+- Requires Windows 7 or later
+- No driver installation required for most HID devices
+- May require administrator privileges for some devices
+
+### macOS
+
+- Requires macOS 10.9 or later
+- Uses IOKit framework (linked automatically by CMake)
+- No special permissions required for most HID devices
+
+### Linux
+
+- Requires kernel 2.6.39 or later
+- May require udev rules for non-root access
+- Example udev rule (create `/etc/udev/rules.d/99-hidraw-permissions.rules`):
+  ```
+  KERNEL=="hidraw*", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", MODE="0666"
+  ```
 
 ## Error Handling
 
 All API functions that can fail return an error code. Use `memfault_hid_error_string()` to get a human-readable description:
 
 ```c
-int ret = memfault_hid_open(vid, pid, NULL, &device);
-if (ret != MEMFAULT_HID_SUCCESS) {
+int ret = mds_session_create_hid(vid, pid, NULL, &session);
+if (ret != 0) {
     fprintf(stderr, "Error: %s\n", memfault_hid_error_string(ret));
 }
 ```
