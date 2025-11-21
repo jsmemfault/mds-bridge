@@ -13,6 +13,11 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+/* On some platforms (Linux), curl.h defines these as macros.
+ * We need to undefine them to provide our mock implementations. */
+#undef curl_easy_setopt
+#undef curl_easy_getinfo
+
 /* Mock state */
 typedef struct {
     char last_url[512];
