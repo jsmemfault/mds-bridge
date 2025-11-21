@@ -234,7 +234,7 @@ int mds_get_device_identifier(mds_session_t *session, char *device_id, size_t ma
     }
 
     /* Copy string, ensuring null termination */
-    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    size_t copy_len = ((size_t)ret < max_len) ? (size_t)ret : (max_len - 1);
     memcpy(device_id, data, copy_len);
     device_id[copy_len] = '\0';
 
@@ -255,7 +255,7 @@ int mds_get_data_uri(mds_session_t *session, char *uri, size_t max_len) {
     }
 
     /* Copy string, ensuring null termination */
-    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    size_t copy_len = ((size_t)ret < max_len) ? (size_t)ret : (max_len - 1);
     memcpy(uri, data, copy_len);
     uri[copy_len] = '\0';
 
@@ -276,7 +276,7 @@ int mds_get_authorization(mds_session_t *session, char *auth, size_t max_len) {
     }
 
     /* Copy string, ensuring null termination */
-    size_t copy_len = (ret < max_len) ? ret : (max_len - 1);
+    size_t copy_len = ((size_t)ret < max_len) ? (size_t)ret : (max_len - 1);
     memcpy(auth, data, copy_len);
     auth[copy_len] = '\0';
 

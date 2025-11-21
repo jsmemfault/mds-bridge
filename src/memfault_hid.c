@@ -407,7 +407,9 @@ int memfault_hid_send_output_report(memfault_hid_device_t *device,
     printf("]\n");
     #endif
 
-    int result = hid_send_output_report(device->handle, buffer, length + 1);
+    // Use hid_write() for compatibility with older HIDAPI versions (pre-0.14.0)
+    // hid_write() sends output reports and works the same way for our use case
+    int result = hid_write(device->handle, buffer, length + 1);
     if (result < 0) {
         return MEMFAULT_HID_ERROR_IO;
     }
