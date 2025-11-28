@@ -5,6 +5,8 @@
  * This mock simulates HTTP POST requests and tracks upload statistics.
  */
 
+/* Define CURL_STATICLIB to avoid DLL linkage warnings on Windows */
+#define CURL_STATICLIB
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>

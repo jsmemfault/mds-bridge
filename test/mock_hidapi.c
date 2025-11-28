@@ -162,7 +162,7 @@ static void mds_initialize_feature_reports(void) {
  * Device Management
  * ========================================================================== */
 
-hid_device * HID_API_EXPORT hid_open(unsigned short vendor_id,
+hid_device HID_API_EXPORT * hid_open(unsigned short vendor_id,
                                       unsigned short product_id,
                                       const wchar_t *serial_number) {
     printf("[MOCK] hid_open(0x%04X, 0x%04X, %ls)\n",
@@ -192,7 +192,7 @@ hid_device * HID_API_EXPORT hid_open(unsigned short vendor_id,
     return (hid_device *)&g_mock_device;
 }
 
-hid_device * HID_API_EXPORT hid_open_path(const char *path) {
+hid_device HID_API_EXPORT * hid_open_path(const char *path) {
     printf("[MOCK] hid_open_path(%s)\n", path);
 
     if (strcmp(path, g_device_info.path) != 0) {
