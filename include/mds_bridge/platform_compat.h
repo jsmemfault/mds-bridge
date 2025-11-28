@@ -10,7 +10,7 @@
 
 #ifdef _WIN32
     #include <windows.h>
-    #include <time.h>
+    #include <time.h>  /* This may define struct timespec on newer Windows SDKs */
 
     /* Sleep functions */
     #define sleep(x) Sleep((x) * 1000)
@@ -20,15 +20,8 @@
     #ifndef CLOCK_MONOTONIC
         #define CLOCK_MONOTONIC 0
 
-        /* Only define timespec if it's not already defined by the Windows SDK */
-        #if !defined(_TIMESPEC_DEFINED) && !defined(__struct_timespec_defined)
-            #define _TIMESPEC_DEFINED
-            struct timespec {
-                long tv_sec;
-                long tv_nsec;
-            };
-        #endif
-
+        /* Windows SDK 10.0.17063+ defines struct timespec in time.h
+         * We only need to provide clock_gettime implementation */
         static inline int clock_gettime(int clk_id, struct timespec *ts) {
             (void)clk_id;
             ULONGLONG ms = GetTickCount64();
