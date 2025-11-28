@@ -9,7 +9,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Build options
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+# Default to static libraries on Windows (DLLs require export declarations)
+if(WIN32)
+    option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+else()
+    option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+endif()
 option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_TESTS "Build test programs (macOS only)" ON)
 
