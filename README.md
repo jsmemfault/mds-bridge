@@ -89,9 +89,16 @@ brew install hidapi
 sudo apt-get install libhidapi-dev
 ```
 
-**Windows:**
-- Download HIDAPI from https://github.com/libusb/hidapi
-- Or use vcpkg: `vcpkg install hidapi`
+**Windows (using vcpkg - recommended):**
+```cmd
+git clone https://github.com/Microsoft/vcpkg.git
+cd vcpkg
+.\bootstrap-vcpkg.bat
+.\vcpkg install hidapi:x64-windows curl:x64-windows
+.\vcpkg integrate install
+```
+
+Note: On ARM64 Windows, use `hidapi:arm64-windows curl:arm64-windows` instead.
 
 #### libcurl (for HTTP chunk uploading)
 
@@ -106,8 +113,7 @@ sudo apt-get install libcurl4-openssl-dev
 ```
 
 **Windows:**
-- Usually included with Windows
-- Or use vcpkg: `vcpkg install curl`
+Install via vcpkg (see HIDAPI instructions above)
 
 #### CMake
 
@@ -124,6 +130,7 @@ sudo apt-get install cmake
 
 ### Build Instructions
 
+**macOS / Linux:**
 ```bash
 mkdir build
 cd build
@@ -137,16 +144,36 @@ make test
 sudo make install
 ```
 
+**Windows (using vcpkg):**
+```powershell
+mkdir build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=C:\path\to\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake --build . --config Release
+
+# Optional: Run tests
+ctest -C Release
+```
+
+Replace `C:\path\to\vcpkg` with your actual vcpkg installation path.
+
 ### Build Options
 
-- `BUILD_SHARED_LIBS`: Build shared libraries (default: ON)
+- `BUILD_SHARED_LIBS`: Build shared libraries (default: ON on Unix, OFF on Windows)
 - `BUILD_EXAMPLES`: Build example programs (default: ON)
 - `BUILD_TESTS`: Build test programs (default: ON)
+- `BUILD_VERBOSE`: Show verbose build output including npm (default: OFF)
 
 Example:
 ```bash
+# Unix
 cmake -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON ..
+
+# Windows
+cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_TOOLCHAIN_FILE=C:\path\to\vcpkg\scripts\buildsystems\vcpkg.cmake
 ```
+
+Note: Windows defaults to static libraries because DLLs require export declarations. You can override with `-DBUILD_SHARED_LIBS=ON` but the library headers currently lack the necessary `__declspec` annotations.
 
 ## Usage
 
@@ -384,6 +411,7 @@ The library includes example programs in C, Python, and Node.js:
 - **`mds_gateway`**: Full MDS gateway that uploads diagnostic chunks to Memfault cloud
 - **`mds_monitor`**: Real-time monitor for inspecting MDS stream data
 
+**macOS / Linux:**
 ```bash
 # MDS gateway - upload chunks to Memfault cloud
 ./build/examples/mds_gateway 2fe3 0007
@@ -398,13 +426,35 @@ The library includes example programs in C, Python, and Node.js:
 ./build/examples/mds_monitor
 ```
 
+**Windows:**
+```powershell
+# MDS gateway - upload chunks to Memfault cloud
+.\build\examples\Release\mds_gateway.exe 2fe3 0007
+
+# MDS gateway - dry-run mode (print chunks without uploading)
+.\build\examples\Release\mds_gateway.exe 2fe3 0007 --dry-run
+
+# MDS monitor - display stream data in real-time
+.\build\examples\Release\mds_monitor.exe 2fe3 0007
+
+# MDS monitor - interactive device selection
+.\build\examples\Release\mds_monitor.exe
+```
+
 ### Python Example
 
 Uses ctypes bindings with a custom Python backend:
 
+**macOS / Linux:**
 ```bash
 cd build/examples/python
 python3 main.py 2fe3 0007
+```
+
+**Windows:**
+```powershell
+cd build\examples\python
+python main.py 2fe3 0007
 ```
 
 The Python example demonstrates:
@@ -416,8 +466,15 @@ The Python example demonstrates:
 
 Uses N-API native addon:
 
+**macOS / Linux:**
 ```bash
 cd build/examples/nodejs
+npm start -- 2fe3 0007
+```
+
+**Windows:**
+```powershell
+cd build\examples\nodejs
 npm start -- 2fe3 0007
 ```
 
@@ -443,9 +500,23 @@ Most applications only need `mds_protocol.h`.
 
 The library includes comprehensive test suites with mocked dependencies (no hardware or network required):
 
+**macOS / Linux:**
 ```bash
 cd build
 make test
+# Or use ctest directly
+ctest --verbose
+```
+
+**Windows:**
+```powershell
+cd build
+ctest -C Release --verbose
+
+# Or run individual tests
+.\test\Release\test_hid.exe
+.\test\Release\test_upload.exe
+.\test\Release\test_mds_e2e.exe
 ```
 
 Output:
@@ -474,9 +545,14 @@ See [test/README.md](test/README.md) for detailed testing documentation.
 
 ### Windows
 
-- Requires Windows 7 or later
+- Requires Windows 7 or later (Windows 10+ recommended)
+- Visual Studio 2019 or later (for MSVC compiler)
+- CMake 3.15 or later
 - No driver installation required for most HID devices
 - May require administrator privileges for some devices
+- Builds static libraries by default (shared libraries require DLL export annotations)
+- Use vcpkg for dependency management (recommended)
+- Both x64 and ARM64 architectures are supported
 
 ### macOS
 
