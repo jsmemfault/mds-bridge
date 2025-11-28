@@ -69,7 +69,7 @@ static void print_stream_packet(const mds_stream_packet_t *packet, monitor_stats
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
     printf("[%ld.%03ld] MDS Stream Packet\n",
-           ts.tv_sec, ts.tv_nsec / 1000000);
+           (long)ts.tv_sec, (long)(ts.tv_nsec / 1000000));
     printf("  Sequence:   %u (0x%02X)\n", packet->sequence, packet->sequence);
     printf("  Data Len:   %zu bytes\n", packet->data_len);
     printf("  Data:       ");
@@ -253,7 +253,7 @@ static int monitor_mds_stream(const char *path) {
             time_t elapsed = time(NULL) - stats.start_time;
             printf("[Stats] Packets: %u, Bytes: %u, Seq errors: %u, Elapsed: %ld sec\n\n",
                    stats.packets_received, stats.bytes_received,
-                   stats.sequence_errors, elapsed);
+                   stats.sequence_errors, (long)elapsed);
         }
     }
 
@@ -264,7 +264,7 @@ static int monitor_mds_stream(const char *path) {
     printf("  Packets received:  %u\n", stats.packets_received);
     printf("  Bytes received:    %u\n", stats.bytes_received);
     printf("  Sequence errors:   %u\n", stats.sequence_errors);
-    printf("  Elapsed time:      %ld seconds\n", elapsed);
+    printf("  Elapsed time:      %ld seconds\n", (long)elapsed);
     if (elapsed > 0) {
         printf("  Throughput:        %.2f bytes/sec\n",
                (double)stats.bytes_received / elapsed);
