@@ -19,14 +19,9 @@
 #include <stdbool.h>
 #include <time.h>
 
-#ifdef _WIN32
-    #include <windows.h>
-    #define sleep(x) Sleep((x) * 1000)
-#else
-    #include <unistd.h>
-#endif
 #include "mds_bridge/memfault_hid.h"  /* For device enumeration */
 #include "mds_bridge/mds_protocol.h"
+#include "mds_bridge/platform_compat.h"
 
 /* Global flag for clean shutdown */
 static volatile bool g_running = true;

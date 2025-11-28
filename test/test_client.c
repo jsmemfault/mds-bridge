@@ -7,16 +7,10 @@
 
 #include "../src/memfault_hid_internal.h"
 #include "mds_bridge/mds_protocol.h"
+#include "mds_bridge/platform_compat.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-
-#ifdef _WIN32
-    #include <windows.h>
-    #define usleep(x) Sleep((x) / 1000)
-#else
-    #include <unistd.h>
-#endif
 
 #define TEST_VID 0x1234
 #define TEST_PID 0x5678

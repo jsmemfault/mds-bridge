@@ -18,19 +18,13 @@
 
 #include "mds_bridge/mds_protocol.h"
 #include "mds_bridge/chunks_uploader.h"
+#include "mds_bridge/platform_compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
-
-#ifdef _WIN32
-    #include <windows.h>
-    #define sleep(x) Sleep((x) * 1000)
-#else
-    #include <unistd.h>
-#endif
 
 static volatile sig_atomic_t keep_running = 1;
 
