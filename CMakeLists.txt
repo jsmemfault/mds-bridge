@@ -17,6 +17,7 @@ else()
 endif()
 option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_TESTS "Build test programs (macOS only)" ON)
+option(ENABLE_NODEJS "Build Node.js example and addon" ON)
 
 # Add CMake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

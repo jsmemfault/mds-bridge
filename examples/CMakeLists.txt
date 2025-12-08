@@ -48,12 +48,22 @@ configure_file(
 )
 
 # Node.js Example - Build with N-API addon
-add_subdirectory(nodejs)
+if(ENABLE_NODEJS)
+    set(NODEJS_EXAMPLE_DIR ${CMAKE_BINARY_DIR}/examples/nodejs)
+    add_subdirectory(nodejs)
+endif()
 
 # Print helpful message
 add_custom_target(copy_examples ALL
     COMMAND ${CMAKE_COMMAND} -E echo "Examples copied to build directory:"
     COMMAND ${CMAKE_COMMAND} -E echo "  Python:  ${PYTHON_EXAMPLE_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E echo "  Node.js: ${NODEJS_EXAMPLE_DIR}"
     DEPENDS mds_bridge
 )
+
+if(ENABLE_NODEJS)
+    add_custom_command(
+        TARGET copy_examples
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "  Node.js: ${NODEJS_EXAMPLE_DIR}"
+    )
+endif()
