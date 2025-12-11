@@ -7,9 +7,13 @@
         "<!@(node -p \"require('node-addon-api').include\")",
         "@PROJECT_SOURCE_DIR@/include"
       ],
-      "libraries": [
-        "-L@PROJECT_BINARY_DIR@",
-        "-lmds_bridge"
+      "conditions": [
+        ["OS!='win'", {
+          "libraries": [
+            "-L@PROJECT_BINARY_DIR@",
+            "-lmds_bridge"
+          ]
+        }]
       ],
       "defines": [ "NAPI_DISABLE_CPP_EXCEPTIONS" ],
       "cflags!": [ "-fno-exceptions" ],
@@ -24,6 +28,21 @@
       },
       "msvs_settings": {
         "VCCLCompilerTool": { "ExceptionHandling": 1 },
+        "VCLinkerTool": {
+          "AdditionalLibraryDirectories": [
+            "@PROJECT_BINARY_DIR@/Release",
+            "@PROJECT_BINARY_DIR@/Debug"
+          ],
+          "AdditionalDependencies": [
+            "mds_bridge.lib",
+            "hidapi.lib",
+            "libcurl.lib",
+            "ws2_32.lib",
+            "crypt32.lib",
+            "wldap32.lib",
+            "normaliz.lib"
+          ]
+        }
       }
     }
   ]

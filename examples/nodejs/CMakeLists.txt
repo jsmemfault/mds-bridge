@@ -25,12 +25,63 @@ find_program(NPM_EXECUTABLE npm)
 if(NPM_EXECUTABLE)
     message(STATUS "Found npm: ${NPM_EXECUTABLE}")
 
+    # On Windows, node-gyp needs Visual Studio environment variables
+    # Call vcvars before npm install to set up the build environment
+    if(WIN32)
+        find_program(VSWHERE_PATH vswhere
+            PATHS "$ENV{ProgramFiles\(x86\)}/Microsoft Visual Studio/Installer"
+        )
+
+        if(VSWHERE_PATH)
+            # Find VS 2017-2022, including BuildTools editions
+            execute_process(
+                COMMAND ${VSWHERE_PATH} -latest -version "[15.0,18.0)" -products * -property installationPath
+                OUTPUT_VARIABLE VS_INSTALL_PATH
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE VSWHERE_RESULT
+            )
+
+            if(VSWHERE_RESULT EQUAL 0 AND VS_INSTALL_PATH)
+                message(STATUS "Found Visual Studio at: ${VS_INSTALL_PATH}")
+
+                # Select vcvars script based on target architecture
+                if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64")
+                    set(VCVARS_SCRIPT "${VS_INSTALL_PATH}/VC/Auxiliary/Build/vcvarsall.bat")
+                    set(VCVARS_ARGS "x64_arm64")
+                else()
+                    set(VCVARS_SCRIPT "${VS_INSTALL_PATH}/VC/Auxiliary/Build/vcvars64.bat")
+                    set(VCVARS_ARGS "")
+                endif()
+
+                # Create wrapper that calls vcvars then npm install with configuration
+                file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/npm_install.bat"
+                    "@echo off\n"
+                    "call \"${VCVARS_SCRIPT}\" ${VCVARS_ARGS} >nul 2>&1\n"
+                    "if /i \"%1\"==\"Debug\" (\n"
+                    "  \"${NPM_EXECUTABLE}\" install --loglevel=error --debug\n"
+                    ") else (\n"
+                    "  \"${NPM_EXECUTABLE}\" install --loglevel=error\n"
+                    ")\n"
+                )
+                set(NPM_INSTALL_COMMAND "${CMAKE_CURRENT_BINARY_DIR}/npm_install.bat" "$<CONFIG>")
+            else()
+                message(WARNING "Could not locate Visual Studio, npm install may fail")
+                set(NPM_INSTALL_COMMAND ${NPM_EXECUTABLE} install --loglevel=error)
+            endif()
+        else()
+            message(WARNING "vswhere not found, npm install may fail")
+            set(NPM_INSTALL_COMMAND ${NPM_EXECUTABLE} install --loglevel=error)
+        endif()
+    else()
+        set(NPM_INSTALL_COMMAND ${NPM_EXECUTABLE} install --loglevel=error)
+    endif()
+
     # Add custom command to run npm install (which builds the addon)
     add_custom_command(
         TARGET nodejs_example
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Installing Node.js dependencies and building N-API addon..."
-        COMMAND ${NPM_EXECUTABLE} install --loglevel=error
+        COMMAND ${NPM_INSTALL_COMMAND}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Running npm install in ${CMAKE_CURRENT_BINARY_DIR}"
         VERBATIM
