@@ -251,13 +251,19 @@ static void mds_queue_stream_packet(const char *chunk_data, size_t chunk_len) {
     /* Sequence byte (bits 0-4) */
     packet[1] = g_mock_device.mds_sequence_counter & 0x1F;
 
-    /* Chunk data */
-    if (chunk_len > 63) {
-        chunk_len = 63;  /* Max payload */
+    /* Clamp chunk length to max payload (61 bytes with new format) */
+    if (chunk_len > 61) {
+        chunk_len = 61;
     }
-    memcpy(&packet[2], chunk_data, chunk_len);
 
-    g_mock_device.input_queue_len[idx] = 2 + chunk_len;
+    /* Length byte (NEW: added for proper framing) */
+    packet[2] = (uint8_t)chunk_len;
+
+    /* Chunk data starts at byte 3 now */
+    memcpy(&packet[3], chunk_data, chunk_len);
+
+    /* Total length: report_id(1) + sequence(1) + length(1) + data(chunk_len) */
+    g_mock_device.input_queue_len[idx] = 3 + chunk_len;
     g_mock_device.input_queue_tail = (g_mock_device.input_queue_tail + 1) % 10;
     g_mock_device.input_queue_count++;
 
@@ -265,7 +271,7 @@ static void mds_queue_stream_packet(const char *chunk_data, size_t chunk_len) {
     g_mock_device.mds_sequence_counter = (g_mock_device.mds_sequence_counter + 1) & 0x1F;
     g_mock_device.mds_chunk_sent_count++;
 
-    printf("[MOCK]   Queued MDS stream packet #%zu (seq=%u, %zu bytes)\n",
+    printf("[MOCK]   Queued MDS stream packet #%zu (seq=%u, len=%zu)\n",
            g_mock_device.mds_chunk_sent_count,
            packet[1], chunk_len);
 }

@@ -123,6 +123,7 @@ int chunks_uploader_callback(const char *uri,
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, full_header);
     headers = curl_slist_append(headers, "Content-Type: application/octet-stream");
+    headers = curl_slist_append(headers, "User-Agent: mds-bridge/1.0 (Memfault MDS Gateway)");
 
     curl_easy_setopt(uploader->curl, CURLOPT_HTTPHEADER, headers);
 
@@ -132,6 +133,16 @@ int chunks_uploader_callback(const char *uri,
     /* Set verbose if enabled */
     if (uploader->verbose) {
         curl_easy_setopt(uploader->curl, CURLOPT_VERBOSE, 1L);
+
+        /* Debug: show exactly what bytes we're uploading */
+        printf("[UPLOAD] %zu bytes: ", chunk_len);
+        for (size_t i = 0; i < chunk_len && i < 20; i++) {
+            printf("%02X ", chunk_data[i]);
+        }
+        if (chunk_len > 20) {
+            printf("...");
+        }
+        printf("\n");
     }
 
     /* Perform the request */

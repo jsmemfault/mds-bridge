@@ -44,21 +44,36 @@ static int mds_parse_stream_packet(const uint8_t *buffer, size_t buffer_len,
         return -EINVAL;
     }
 
-    if (buffer_len < 1) {
-        return -EINVAL;  /* Need at least sequence byte */
+    /* Need at least sequence byte + length byte */
+    if (buffer_len < 2) {
+        return -EINVAL;
     }
 
-    /* Extract sequence number */
+    /* Extract sequence number from byte 0 */
     packet->sequence = mds_extract_sequence(buffer[0]);
 
-    /* Copy payload data */
-    packet->data_len = buffer_len - 1;  /* Exclude sequence byte */
-    if (packet->data_len > MDS_MAX_CHUNK_DATA_LEN) {
-        packet->data_len = MDS_MAX_CHUNK_DATA_LEN;
+    /* Extract payload length from byte 1 */
+    uint8_t payload_len = buffer[1];
+
+    /* Validate payload length */
+    if (payload_len > MDS_MAX_CHUNK_DATA_LEN) {
+        fprintf(stderr, "[MDS] Invalid payload length: %u (max %d)\n",
+                payload_len, MDS_MAX_CHUNK_DATA_LEN);
+        return -EINVAL;
     }
 
+    /* Verify buffer has enough data */
+    if (buffer_len < (size_t)(2 + payload_len)) {
+        fprintf(stderr, "[MDS] Buffer too short: %zu bytes, need %u\n",
+                buffer_len, 2 + payload_len);
+        return -EINVAL;
+    }
+
+    packet->data_len = payload_len;
+
+    /* Copy only the valid payload bytes (starting at byte 2) */
     if (packet->data_len > 0) {
-        memcpy(packet->data, &buffer[1], packet->data_len);
+        memcpy(packet->data, &buffer[2], packet->data_len);
     }
 
     return 0;
@@ -339,7 +354,7 @@ int mds_stream_read_packet(mds_session_t *session, mds_stream_packet_t *packet,
         return -EINVAL;
     }
 
-    uint8_t data[MDS_MAX_CHUNK_DATA_LEN + 1];  /* +1 for sequence byte */
+    uint8_t data[MDS_MAX_CHUNK_DATA_LEN + 2];  /* +2 for sequence and length bytes */
 
     int ret = mds_backend_read(session->backend,
                                 MDS_REPORT_ID_STREAM_DATA,

@@ -18,6 +18,7 @@
 
 #include "mds_bridge/mds_protocol.h"
 #include "mds_bridge/chunks_uploader.h"
+#include "mds_bridge/memfault_hid.h"
 #include "mds_bridge/platform_compat.h"
 
 #include <stdio.h>
@@ -25,6 +26,10 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
+
+#ifndef _WIN32
+#include <unistd.h>  /* For usleep */
+#endif
 
 static volatile sig_atomic_t keep_running = 1;
 
@@ -155,6 +160,19 @@ int main(int argc, char *argv[]) {
         printf("HTTP uploader configured\n\n");
     }
 
+    /* Flush any stale HID data before enabling streaming */
+    printf("Flushing stale HID data...\n");
+    {
+        mds_stream_packet_t flush_pkt;
+        int flush_count = 0;
+        while (mds_stream_read_packet(session, &flush_pkt, 10) == 0) {
+            flush_count++;
+        }
+        if (flush_count > 0) {
+            printf("Flushed %d stale packets\n", flush_count);
+        }
+    }
+
     /* Enable streaming */
     printf("Enabling diagnostic data streaming...\n");
     ret = mds_stream_enable(session);
@@ -162,44 +180,125 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to enable streaming\n");
         goto cleanup;
     }
-    printf("Streaming enabled\n\n");
+    printf("Streaming enabled - ready to receive\n\n");
 
     printf("=========================================\n");
     printf("Gateway running. Press Ctrl+C to stop.\n");
     printf("=========================================\n\n");
 
-    /* Process stream packets */
+    /*
+     * Buffered packet processing to prevent HID buffer overflow.
+     *
+     * Problem: If we upload synchronously after each packet read, and the
+     * device sends packets faster than our HTTP roundtrip, HID packets
+     * accumulate in the kernel buffer and can be dropped.
+     *
+     * Solution: Read all available packets first (non-blocking), buffer them,
+     * then upload the batch. This ensures we drain the HID buffer quickly.
+     */
+    #define CHUNK_BUFFER_SIZE 128
+    typedef struct {
+        uint8_t data[MDS_MAX_CHUNK_DATA_LEN];
+        size_t len;
+    } buffered_chunk_t;
+
+    buffered_chunk_t *chunk_buffer = malloc(CHUNK_BUFFER_SIZE * sizeof(buffered_chunk_t));
+    if (chunk_buffer == NULL) {
+        fprintf(stderr, "Failed to allocate chunk buffer\n");
+        goto cleanup;
+    }
+
     int chunk_count = 0;
     int error_count = 0;
-    while (keep_running) {
-        /* Process one packet with 1 second timeout */
-        ret = mds_process_stream(session, &config, 1000, NULL);
+    uint8_t expected_seq = 0;  /* Track expected sequence for gap detection */
+    bool first_packet = true;
+    int dropped_packets = 0;
 
-        if (ret == 0) {
-            chunk_count++;
-            if (!dry_run) {
-                printf("Processed chunk #%d\n", chunk_count);
-                /* Print upload statistics */
-                chunks_upload_stats_t stats;
-                chunks_uploader_get_stats(uploader, &stats);
-                printf("  Total uploaded: %zu chunks, %zu bytes\n",
-                       stats.chunks_uploaded, stats.bytes_uploaded);
-                if (stats.upload_failures > 0) {
-                    printf("  Upload failures: %zu\n", stats.upload_failures);
+    while (keep_running) {
+        /* Phase 1: Drain all available HID packets into buffer (short timeout) */
+        size_t buffered_count = 0;
+        while (buffered_count < CHUNK_BUFFER_SIZE) {
+            mds_stream_packet_t packet;
+            /* Use short timeout (10ms) to quickly drain buffer */
+            ret = mds_stream_read_packet(session, &packet, 10);
+
+            if (ret == 0) {
+                /* Check for sequence gaps (dropped packets) */
+                if (first_packet) {
+                    expected_seq = packet.sequence;
+                    first_packet = false;
+                    printf("First packet received, sequence=%u\n", packet.sequence);
+                } else if (packet.sequence != expected_seq) {
+                    /* Calculate how many packets we missed */
+                    int gap = (packet.sequence - expected_seq) & 0x1F;
+                    if (gap > 16) gap -= 32;  /* Handle wrap-around */
+                    if (gap > 0) {
+                        dropped_packets += gap;
+                        fprintf(stderr, "*** SEQUENCE GAP: expected %u, got %u (missed %d packets, total dropped: %d) ***\n",
+                                expected_seq, packet.sequence, gap, dropped_packets);
+                    } else if (gap < 0) {
+                        fprintf(stderr, "*** DUPLICATE/OUT-OF-ORDER: expected %u, got %u ***\n",
+                                expected_seq, packet.sequence);
+                    }
+                }
+                expected_seq = (packet.sequence + 1) & 0x1F;
+
+                /* Buffer this chunk */
+                chunk_buffer[buffered_count].len = packet.data_len;
+                memcpy(chunk_buffer[buffered_count].data, packet.data, packet.data_len);
+                buffered_count++;
+            } else if (ret == -ETIMEDOUT || ret == MEMFAULT_HID_ERROR_TIMEOUT) {
+                /* No more packets available */
+                break;
+            } else {
+                /* Other error */
+                break;
+            }
+        }
+
+        /* Phase 2: Upload buffered chunks */
+        if (buffered_count > 0) {
+            if (buffered_count > 1) {
+                printf("Buffered %zu chunks, uploading...\n", buffered_count);
+            }
+
+            for (size_t i = 0; i < buffered_count; i++) {
+                chunk_count++;
+
+                if (dry_run) {
+                    /* Call dry-run callback directly */
+                    dry_run_callback(config.data_uri, config.authorization,
+                                     chunk_buffer[i].data, chunk_buffer[i].len,
+                                     &dry_run_chunk_count);
+                } else {
+                    /* Upload via HTTP */
+                    ret = chunks_uploader_callback(config.data_uri, config.authorization,
+                                                    chunk_buffer[i].data, chunk_buffer[i].len,
+                                                    uploader);
+                    if (ret != 0) {
+                        fprintf(stderr, "Upload failed for chunk #%d\n", chunk_count);
+                    }
                 }
             }
-            /* In dry-run mode, the callback itself prints the chunk info */
-        } else if (ret == -ETIMEDOUT) {
-            /* Timeout is normal - no data available, continue */
-            continue;
-        } else {
-            /* Other errors - warn but continue (device might not be sending data yet) */
-            if (error_count == 0) {
-                fprintf(stderr, "Warning: Error processing stream: %d (device might not be sending data yet)\n", ret);
+
+            if (!dry_run && buffered_count > 0) {
+                chunks_upload_stats_t stats;
+                chunks_uploader_get_stats(uploader, &stats);
+                printf("Processed %zu chunks (total: %d), uploaded: %zu chunks, %zu bytes\n",
+                       buffered_count, chunk_count, stats.chunks_uploaded, stats.bytes_uploaded);
             }
-            error_count++;
+        } else {
+            /* No packets available - wait a bit before next poll */
+            /* Use platform_sleep if available, otherwise just continue */
+            #ifdef _WIN32
+            Sleep(100);
+            #else
+            usleep(100000);  /* 100ms */
+            #endif
         }
     }
+
+    free(chunk_buffer);
 
     printf("\nShutting down...\n");
 

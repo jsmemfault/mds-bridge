@@ -66,8 +66,8 @@ extern "C" {
 /** Maximum authorization header length */
 #define MDS_MAX_AUTH_LEN                    128
 
-/** Maximum chunk data per packet (after sequence byte) */
-#define MDS_MAX_CHUNK_DATA_LEN              63
+/** Maximum chunk data per packet (after sequence and length bytes) */
+#define MDS_MAX_CHUNK_DATA_LEN              61
 
 /* ============================================================================
  * Stream Control Modes
@@ -118,7 +118,8 @@ typedef struct {
  *
  * Packet format for diagnostic chunk data.
  * Byte 0: Sequence counter (bits 0-4) + reserved (bits 5-7)
- * Byte 1+: Chunk data payload
+ * Byte 1: Payload length (1-62, number of valid data bytes)
+ * Bytes 2-63: Chunk data payload (only first `length` bytes valid)
  */
 typedef struct {
     /** Sequence counter (0-31, wraps around) */
