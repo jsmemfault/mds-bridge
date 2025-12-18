@@ -14,8 +14,8 @@
 │      Shows device logs and fault output                  │
 │                                                          │
 ├──────────────────────────────────────────────────────────┤
-│  DEMO: Press Button 1 → Fault → Upload → See in Cloud   │
+│  DEMO: Press Button 1 → Fault → Upload → See in Cloud    │
 │                                                          │
-│  "Press the button. See the crash. Fix the bug."        │
+│  "Press the button. See the crash. Fix the bug."         │
 └──────────────────────────────────────────────────────────┘
 ```
