@@ -1,7 +1,7 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │         MEMFAULT DIAGNOSTIC SERVICE (MDS) DEMO           │
-│                     Nordic + Memfault                    │
+│               nRF Cloud Powered by Memfault              │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │  ◄── LEFT PANE                                           │
