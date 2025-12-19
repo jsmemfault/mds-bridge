@@ -19,215 +19,116 @@
 
 ## VISUAL STORYBOARD
 
-### FRAME 1: Title + Context (0:00 - 0:05)
+### FRAME 1: Title (0:00 - 0:05)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                      nRF Cloud                           │
-│                 Powered by Memfault                      │
-│                                                          │
-│        ─────────────────────────────────────             │
-│                                                          │
-│          USB-HID Diagnostic Streaming Demo               │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+        nRF Cloud
+   Powered by Memfault
 
-**Motion:** Logos fade in, "USB-HID" emphasized
+   USB-HID Diagnostics
+```
 
 ---
 
-### FRAME 2: The Problem (0:05 - 0:10)
+### FRAME 2: Problem (0:05 - 0:10)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│              Your device crashes in the field.           │
-│                                                          │
-│                   No JTAG. No logs.                      │
-│                   No way to know why.                    │
-│                                                          │
-│                      Until now.                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+   Device crashes.
+   No logs.
+   No answers.
 ```
-
-**Motion:** Text fades in, "Until now." appears last with emphasis
 
 ---
 
-### FRAME 3: Demo Overview — The Setup (0:10 - 0:18)
+### FRAME 3: Solution (0:10 - 0:16)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                      LIVE DEMO SETUP                     │
-│                                                          │
-│    ┌────────────┐       USB        ┌────────────┐       │
-│    │ nRF54LM20  │ ───────────────► │  Gateway   │       │
-│    │     DK     │       HID        │  (below)   │       │
-│    └────────────┘                  └─────┬──────┘       │
-│          │                               │ HTTPS        │
-│      [Button]                            ▼              │
-│                                    ┌────────────┐       │
-│                                    │  nRF Cloud │       │
-│                                    └────────────┘       │
-└──────────────────────────────────────────────────────────┘
-```
+   Device  ──USB HID──►  Gateway  ──►  Cloud
 
-**Motion:** Flow animates: Device → Gateway → Cloud
+            Crash to cloud in seconds.
+```
 
 ---
 
-### FRAME 4: Demo Step 1 — Trigger Fault (0:18 - 0:24)
+### FRAME 4: Step 1 (0:16 - 0:22)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                    STEP 1: TRIGGER                       │
-│                                                          │
-│                                                          │
-│                 Press button on device                   │
-│                         ▼                                │
-│                  Fault injected                          │
-│                         ▼                                │
-│              Coredump captured instantly                 │
-│                                                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+              ① TRIGGER
 
-**Motion:** Steps cascade down, button icon pulses
+         Press button on device
+                  ↓
+           Coredump captured
+```
 
 ---
 
-### FRAME 5: Demo Step 2 — USB-HID Stream (0:24 - 0:32)
+### FRAME 5: Step 2 (0:22 - 0:30)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                   STEP 2: STREAM                         │
-│                                                          │
-│       ┌──────────┐                  ┌──────────┐        │
-│       │  Device  │  ═══════════►   │ Gateway  │        │
-│       └──────────┘   USB HID        └──────────┘        │
-│                      packets                             │
-│                                                          │
-│            • Standard USB HID — no drivers              │
-│            • Works on Mac, Windows, Linux               │
-│            • Chunks streamed in real-time               │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+              ② STREAM
 
-**Motion:** Data packets animate along the arrow, bullet points fade in
+       USB HID — no drivers needed
+       Works on any OS
+```
 
 ---
 
-### FRAME 6: Demo Step 3 — Gateway Processing (0:32 - 0:38)
+### FRAME 6: Step 3 (0:30 - 0:38)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                  STEP 3: GATEWAY                         │
-│                                                          │
-│         ┌─────────────────────────────────────┐         │
-│         │  ◄── See terminal output below      │         │
-│         │                                     │         │
-│         │  📦 Packet received                 │         │
-│         │  📤 Uploading chunk...              │         │
-│         │  ✓  Upload successful               │         │
-│         └─────────────────────────────────────┘         │
-│                                                          │
-│            Gateway auto-reconnects after resets          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+              ③ GATEWAY
 
-**Motion:** Terminal mockup with lines appearing, arrow points down
+       ◄── See terminal below
+
+       📦 Packets received
+       ✓  Uploaded to cloud
+```
 
 ---
 
-### FRAME 7: Demo Step 4 — Cloud Dashboard (0:38 - 0:46)
+### FRAME 7: Step 4 (0:38 - 0:46)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                 STEP 4: CLOUD ANALYSIS                   │
-│                                                          │
-│         Crash appears in nRF Cloud instantly:            │
-│                                                          │
-│            ✓ Full stack trace                            │
-│            ✓ Register dump                               │
-│            ✓ System metrics                              │
-│            ✓ Device timeline                             │
-│                                                          │
-│              From crash to cloud in seconds.             │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+            ④ CLOUD ANALYSIS
 
-**Motion:** Checkmarks animate in, tagline emphasized
+       ✓ Stack trace
+       ✓ Registers
+       ✓ Metrics
+
+       Ready to debug.
+```
 
 ---
 
-### FRAME 8: Why This Matters (0:46 - 0:52)
+### FRAME 8: Scale (0:46 - 0:52)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                 CHIP-TO-CLOUD VISIBILITY                 │
-│                                                          │
-│        This demo shows one device, one crash.            │
-│                                                          │
-│         nRF Cloud scales to millions of devices:         │
-│                                                          │
-│            • Fleet-wide crash analytics                  │
-│            • OTA firmware updates                        │
-│            • Remote diagnostics                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+       One device here.
+       Millions in the field.
 
-**Motion:** Text scales up on "millions of devices"
+       Fleet analytics. OTA. Remote diagnostics.
+```
 
 ---
 
-### FRAME 9: Call to Action (0:52 - 0:57)
+### FRAME 9: CTA (0:52 - 0:57)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                                                          │
-│                          ▼                               │
-│                                                          │
-│               See the live demo below                    │
-│                                                          │
-│          Press the button. See the crash.                │
-│                   Fix the bug.                           │
-│                                                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+                 ▼
 
-**Motion:** Arrow bounces, pointing down to demo station
+       See the live demo below.
+
+   Press the button. See the crash.
+```
 
 ---
 
-### FRAME 10: Loop Point (0:57 - 1:00)
+### FRAME 10: Loop (0:57 - 1:00)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                                                          │
-│                      nRF Cloud                           │
-│                 Powered by Memfault                      │
-│                                                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+        nRF Cloud
+   Powered by Memfault
 ```
-
-**Motion:** Fade out, seamless crossfade to Frame 1
 
 ---
 
@@ -270,30 +171,25 @@
 
 ---
 
-## TEXT SUMMARY (All On-Screen Copy)
+## TEXT SUMMARY (Word Count)
 
-**Frame 1:** "nRF Cloud / Powered by Memfault / USB-HID Diagnostic Streaming Demo"
+| Frame | Words | Text |
+|-------|-------|------|
+| 1 | 5 | nRF Cloud / Powered by Memfault / USB-HID Diagnostics |
+| 2 | 6 | Device crashes. No logs. No answers. |
+| 3 | 9 | Device → Gateway → Cloud / Crash to cloud in seconds. |
+| 4 | 6 | TRIGGER / Press button / Coredump captured |
+| 5 | 9 | STREAM / USB HID — no drivers / Works on any OS |
+| 6 | 8 | GATEWAY / See terminal below / Packets → Uploaded |
+| 7 | 9 | CLOUD ANALYSIS / Stack trace, registers, metrics / Ready to debug |
+| 8 | 12 | One device here. Millions in the field. / Fleet. OTA. Diagnostics. |
+| 9 | 9 | See the live demo below. / Press the button. See the crash. |
+| 10 | 4 | nRF Cloud / Powered by Memfault |
 
-**Frame 2:** "Your device crashes in the field. / No JTAG. No logs. / No way to know why. / Until now."
-
-**Frame 3:** "LIVE DEMO SETUP / nRF54LM20 DK → Gateway → nRF Cloud"
-
-**Frame 4:** "STEP 1: TRIGGER / Press button → Fault injected → Coredump captured"
-
-**Frame 5:** "STEP 2: STREAM / USB HID packets / No drivers, works on any OS"
-
-**Frame 6:** "STEP 3: GATEWAY / See terminal below / Auto-reconnects after resets"
-
-**Frame 7:** "STEP 4: CLOUD ANALYSIS / Stack trace, registers, metrics / From crash to cloud in seconds"
-
-**Frame 8:** "CHIP-TO-CLOUD VISIBILITY / One demo, millions of devices / Fleet analytics, OTA, remote diagnostics"
-
-**Frame 9:** "▼ See the live demo below / Press the button. See the crash. Fix the bug."
-
-**Frame 10:** "nRF Cloud / Powered by Memfault"
+**Total: ~77 words across 60 seconds**
 
 ---
 
-**Document Version:** 3.0
+**Document Version:** 4.0
 **Last Updated:** 2025-12-18
-**Format:** Silent looping video — 40 seconds demo-focused, 20 seconds branding/CTA
+**Format:** Silent looping video — minimal text, maximum impact
