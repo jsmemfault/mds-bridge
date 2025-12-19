@@ -1,198 +1,235 @@
 # nRF Cloud Powered by Memfault
-## CES 2026 Marketing Video Script
+## CES 2026 — Silent Looping Video (60 seconds)
 
-**Target Length:** 60-90 seconds
-**Tone:** Professional, confident, forward-looking
-**Audience:** Embedded engineers, product managers, IoT decision-makers
-
----
-
-## THE SCRIPT
-
-### OPEN: The Reality of Connected Devices (0:00 - 0:12)
-
-**[VISUAL: Montage of Nordic-powered devices in the real world — wearables on wrists, smart home sensors, industrial monitors, asset trackers in motion. Clean, modern cinematography.]**
-
-**NARRATOR (V.O.):**
-> "Billions of connected devices. Deployed everywhere. Operating in conditions you can't predict, can't replicate, and often... can't see."
-
-**[VISUAL: Quick cut to a device LED blinking red, then going dark.]**
-
-> "When something goes wrong in the field, the question isn't *if* you'll find out. It's *how*."
+**Format:** No audio, text-driven, looping seamlessly
+**Display:** Monitor above demo station
+**Purpose:** Attract attention, explain what visitors are seeing below
 
 ---
 
-### THE PROBLEM: Flying Blind (0:12 - 0:22)
+## VISUAL STORYBOARD
 
-**[VISUAL: Developer at desk, looking at blank logs. Empty dashboard. Shrug emoji overlaid briefly (subtle, not cheesy). Cut to device on shelf, silent, unhelpful.]**
+### FRAME 1: Title Card (0:00 - 0:05)
 
-**NARRATOR (V.O.):**
-> "Traditional debugging assumes you're there when it happens. JTAG attached. Serial console connected. But your devices aren't in the lab anymore. They're in pockets, on factory floors, in the middle of nowhere."
-
-**[VISUAL: Map with dots representing deployed devices, one blinking red.]**
-
-> "A crash happens. Data is lost. And you're left guessing."
-
----
-
-### THE SOLUTION: Chip-to-Cloud Observability (0:22 - 0:38)
-
-**[VISUAL: Smooth transition — the red dot on the map turns green. Zoom into the device, showing data flowing upward into the cloud. nRF Cloud dashboard appears, populating with real information.]**
-
-**NARRATOR (V.O.):**
-> "nRF Cloud, powered by Memfault, changes the equation. It's comprehensive observability — from silicon to cloud — built for the unique demands of embedded systems."
-
-**[VISUAL: Split screen showing nRF5340 DK on one side, nRF Cloud dashboard on the other. Data flowing between them.]**
-
-> "Crashes, reboots, battery drain, connectivity drops — captured automatically and streamed to the cloud the moment they happen. No manual intervention. No lost data."
-
----
-
-### HOW IT WORKS: The Demo (0:38 - 0:52)
-
-**[VISUAL: Clean shot of the nRF5340-DK. Finger approaches button. The terminal windows are visible — gateway on left, UART console below.]**
-
-**NARRATOR (V.O.):**
-> "Here's how it works. A Nordic nRF5340 development kit, running the Memfault Diagnostic Service over standard USB HID."
-
-**[VISUAL: Button press. Terminal activity — packets streaming, upload confirmations.]**
-
-> "Press a button to trigger a fault. The device captures a full coredump — stack trace, registers, system state — and streams it through the gateway to nRF Cloud."
-
-**[VISUAL: Dashboard updating in real-time. New issue appearing. Stack trace expanding.]**
-
-> "Within seconds, the crash is in your dashboard. Fully symbolicated. Ready for root cause analysis."
-
----
-
-### KEY DIFFERENTIATORS (0:52 - 1:08)
-
-**[VISUAL: Clean iconography or text overlays appearing as each point is made. Keep it visual, not text-heavy.]**
-
-**NARRATOR (V.O.):**
-> "What makes this different?"
-
-**[Icon: Plug/USB]**
-> "**Universal transport.** USB HID means no custom drivers, no configuration. It just works — on any operating system."
-
-**[Icon: Circular arrows / refresh]**
-> "**Continuous operation.** Device resets after a fault? The gateway reconnects automatically. No downtime. No manual restart."
-
-**[Icon: Cloud with checkmark]**
-> "**Instant insight.** From crash to cloud in seconds. Not hours. Not days. Seconds."
-
-**[Icon: Shield or lock]**
-> "**Built on Nordic's foundation.** Secure, low-power, production-ready. Integrated with the tools you already use."
-
----
-
-### THE BIGGER PICTURE: Device Management at Scale (1:08 - 1:22)
-
-**[VISUAL: Dashboard zooming out to show fleet view — hundreds of devices, charts showing trends, OTA update in progress.]**
-
-**NARRATOR (V.O.):**
-> "But observability is just the beginning. nRF Cloud powered by Memfault is a complete device management platform."
-
-> "Monitor fleet health. Track firmware versions. Push over-the-air updates. Identify issues before your customers do."
-
-**[VISUAL: Graph showing "crashes over time" trending downward after an OTA update.]**
-
-> "It's not just about catching problems. It's about continuously improving — every device, every deployment, every release."
-
----
-
-### CLOSE: The Nordic Advantage (1:22 - 1:35)
-
-**[VISUAL: Return to the montage of devices in the real world — but now with subtle data visualization overlays, showing they're connected, monitored, managed. Confident, optimistic tone.]**
-
-**NARRATOR (V.O.):**
-> "This is what chip-to-cloud really means. Hardware designed for the edge. Software built for reliability. Cloud infrastructure that scales with you."
-
-**[VISUAL: Nordic and Memfault logos side by side. nRF Cloud Powered by Memfault lockup.]**
-
-> "nRF Cloud. Powered by Memfault. From first prototype to millions deployed — we've got you covered."
-
----
-
-### END CARD (1:35 - 1:40)
-
-**[VISUAL: Clean end card with logos and CTA.]**
-
-**TEXT ON SCREEN:**
 ```
-nRF Cloud Powered by Memfault
-
-See it live at the Nordic booth.
-
-nordicsemi.com/nrfcloud
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│                                                          │
+│                      nRF Cloud                           │
+│                 Powered by Memfault                      │
+│                                                          │
+│           Chip-to-Cloud Device Observability             │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**NARRATOR (V.O.):**
-> "Visit the Nordic booth for a live demo."
-
-**[FADE TO BLACK]**
+**Motion:** Logos fade in, tagline slides up
 
 ---
 
-## PRODUCTION NOTES
+### FRAME 2: The Problem (0:05 - 0:12)
 
-### Tone & Style
-- **Confident, not arrogant.** Nordic's brand is approachable expertise.
-- **Technical credibility.** This audience knows embedded. Don't oversimplify, but keep it accessible.
-- **Forward-looking.** This is about where the industry is going, and Nordic is leading.
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│                                                          │
+│              Your device crashes.                        │
+│                                                          │
+│                   No JTAG.                               │
+│                   No logs.                               │
+│                   No answers.                            │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
 
-### Visual Language
-- Clean, modern, lots of white space
-- Real hardware shots (not just renders)
-- Dashboard UI should look polished and responsive
-- Subtle motion graphics for data flow visualization
-- Avoid clichés (no spinning globes, no generic "cloud" imagery)
-
-### Music
-- Modern electronic, understated
-- Builds subtly toward the demo moment
-- Confident but not aggressive
-
-### Pacing
-- Brisk but not rushed
-- Let the demo breathe — that's the payoff
-- End card holds for 5 seconds
+**Motion:** Lines appear one at a time, slight pause on "No answers."
 
 ---
 
-## KEY MESSAGES (For Marketing Review)
+### FRAME 3: The Solution (0:12 - 0:20)
 
-1. **Chip-to-cloud observability** — not just monitoring, but full-stack visibility from silicon to dashboard.
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│                                                          │
+│              Now every crash talks.                      │
+│                                                          │
+│        ┌────────┐         ┌────────┐                    │
+│        │ Device │ ──────► │ Cloud  │                    │
+│        └────────┘   USB   └────────┘                    │
+│                     HID                                  │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
 
-2. **Built for embedded** — this isn't enterprise APM bolted onto IoT. It's designed for the constraints and realities of embedded systems.
-
-3. **Zero-friction integration** — USB HID transport, automatic reconnection, works out of the box.
-
-4. **Actionable insights** — crashes aren't just logged, they're symbolicated, triaged, and ready for debugging.
-
-5. **Scales with you** — from one dev kit on your desk to millions in the field.
-
-6. **Nordic ecosystem** — integrated with nRF Connect SDK, nRF Cloud, and the tools Nordic developers already trust.
-
----
-
-## TAGLINE OPTIONS
-
-- **"From crash to cloud in seconds."**
-- **"See everything. Fix anything."**
-- **"Your devices aren't silent anymore."**
-- **"Observability, from silicon to cloud."**
-- **"The whole picture. In real time."**
+**Motion:** Arrow animates left-to-right, data particles flow along path
 
 ---
 
-## WORD COUNT
+### FRAME 4: How It Works (0:20 - 0:28)
 
-Script narration: ~580 words
-Total document: ~1,150 words
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│         1. Fault occurs on device                        │
+│                    ↓                                     │
+│         2. Coredump captured automatically               │
+│                    ↓                                     │
+│         3. Streamed via USB HID to gateway               │
+│                    ↓                                     │
+│         4. Uploaded to nRF Cloud in seconds              │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Motion:** Steps cascade down with checkmarks appearing
 
 ---
 
-**Document Version:** 1.0
+### FRAME 5: What You Get (0:28 - 0:38)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│              Full stack trace                            │
+│              Register dump                               │
+│              System metrics                              │
+│              Firmware version                            │
+│              Device timeline                             │
+│                                                          │
+│              All in your dashboard.                      │
+│              All in real time.                           │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Motion:** List items fade in sequentially, dashboard mockup pulses subtly
+
+---
+
+### FRAME 6: Key Benefits (0:38 - 0:48)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│    ✓  No custom drivers — standard USB HID              │
+│                                                          │
+│    ✓  Auto-reconnect — gateway survives resets          │
+│                                                          │
+│    ✓  Works on any OS — Mac, Windows, Linux             │
+│                                                          │
+│    ✓  Crash to cloud in seconds                         │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Motion:** Checkmarks animate in one by one
+
+---
+
+### FRAME 7: See It Live (0:48 - 0:55)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│                                                          │
+│                        ▼                                 │
+│                                                          │
+│              See the live demo below                     │
+│                                                          │
+│         Press the button. See the crash.                │
+│               Fix the bug.                               │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Motion:** Arrow pulses/bounces pointing down to demo station
+
+---
+
+### FRAME 8: Closing / Loop Point (0:55 - 0:60)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│                                                          │
+│                      nRF Cloud                           │
+│                 Powered by Memfault                      │
+│                                                          │
+│                                                          │
+│                     ●  ●  ●                              │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Motion:** Fade to title card, seamless loop back to Frame 1
+
+---
+
+## DESIGN NOTES
+
+### Color Palette
+- Nordic blue (#00A9CE) as primary accent
+- Memfault green (#00D26A) for success states
+- Dark background (#1a1a2e or similar) for contrast
+- White/light gray text
+
+### Typography
+- Clean sans-serif (Inter, SF Pro, or similar)
+- Large, readable from 10+ feet away
+- High contrast for visibility in booth lighting
+
+### Animation Style
+- Smooth, confident transitions
+- No flashy effects — professional and modern
+- 0.3-0.5s transitions between elements
+- Subtle motion keeps it alive without being distracting
+
+### Loop Seamlessness
+- Frame 8 fades to match Frame 1 exactly
+- No jarring cut — should feel continuous
+- Consider a 0.5s crossfade at loop point
+
+---
+
+## PRODUCTION SPECS
+
+| Property | Value |
+|----------|-------|
+| Duration | 60 seconds (exact) |
+| Resolution | 1920x1080 (16:9) or 3840x2160 (4K) |
+| Frame Rate | 30fps |
+| Audio | None (silent) |
+| Format | MP4 (H.264) or MOV |
+| Loop | Seamless |
+
+---
+
+## TEXT SUMMARY (All On-Screen Copy)
+
+**Frame 1:** "nRF Cloud / Powered by Memfault / Chip-to-Cloud Device Observability"
+
+**Frame 2:** "Your device crashes. / No JTAG. / No logs. / No answers."
+
+**Frame 3:** "Now every crash talks. / Device → Cloud / USB HID"
+
+**Frame 4:** "1. Fault occurs / 2. Coredump captured / 3. Streamed via USB HID / 4. Uploaded in seconds"
+
+**Frame 5:** "Full stack trace / Register dump / System metrics / Firmware version / Device timeline / All in your dashboard. All in real time."
+
+**Frame 6:** "✓ No custom drivers / ✓ Auto-reconnect / ✓ Works on any OS / ✓ Crash to cloud in seconds"
+
+**Frame 7:** "▼ See the live demo below / Press the button. See the crash. Fix the bug."
+
+**Frame 8:** "nRF Cloud / Powered by Memfault"
+
+---
+
+**Document Version:** 2.0
 **Last Updated:** 2025-12-18
-**Prepared for:** Nordic Semiconductor / CES 2026
+**Format:** Silent looping video for demo station display
