@@ -14,7 +14,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLIDES_FILE="${SCRIPT_DIR}/slides.md"
 SECONDS_PER_SLIDE="${1:-6}"
-NUM_SLIDES=10
+NUM_SLIDES=7
 
 # Check for slides
 if ! command -v slides &> /dev/null; then
@@ -36,7 +36,7 @@ fi
 
         # Last slide - wait then go back to start
         sleep "$SECONDS_PER_SLIDE"
-        osascript -e 'tell application "System Events" to keystroke "gg"'
+        osascript -e 'tell application "System Events" to keystroke "q"'
         sleep 1
     done
 ) &
