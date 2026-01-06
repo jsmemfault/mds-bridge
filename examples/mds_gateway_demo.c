@@ -146,11 +146,11 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <vid> <pid>\n", argv[0]);
         fprintf(stderr, "\n");
         fprintf(stderr, "Arguments:\n");
-        fprintf(stderr, "  vid        Vendor ID (hex, e.g., 1915 for Nordic)\n");
+        fprintf(stderr, "  vid        Vendor ID (hex, e.g., 2fe3)\n");
         fprintf(stderr, "  pid        Product ID (hex)\n");
         fprintf(stderr, "\n");
         fprintf(stderr, "Example:\n");
-        fprintf(stderr, "  %s 1915 cafe\n", argv[0]);
+        fprintf(stderr, "  %s 2fe3 0007\n", argv[0]);
         fprintf(stderr, "\n");
         return 1;
     }
