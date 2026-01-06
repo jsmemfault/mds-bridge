@@ -130,6 +130,14 @@ chmod +x "${APPDIR}/usr/bin/mds-bridge-wrapper"
 # Update desktop file to use wrapper
 sed -i 's|Exec=mds_gateway|Exec=mds-bridge-wrapper|' "${APPDIR}/usr/share/applications/mds-bridge.desktop"
 
+# Create custom AppRun that uses our wrapper
+cat > "${APPDIR}/AppRun" << 'APPRUN_EOF'
+#!/bin/bash
+APPDIR="$(dirname "$(readlink -f "$0")")"
+exec "${APPDIR}/usr/bin/mds-bridge-wrapper" "$@"
+APPRUN_EOF
+chmod +x "${APPDIR}/AppRun"
+
 # Create AppImage
 echo ""
 echo ">>> Creating AppImage..."
@@ -138,11 +146,15 @@ cd "$BUILD_DIR"
 # Set output name
 export OUTPUT="MDS_Bridge-${VERSION}-${ARCH}.AppImage"
 
+# Deploy the actual ELF binaries (not the shell wrapper)
 "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --desktop-file "${APPDIR}/usr/share/applications/mds-bridge.desktop" \
     --icon-file "${APPDIR}/usr/share/icons/hicolor/scalable/apps/mds-bridge.svg" \
-    --executable "${APPDIR}/usr/bin/mds-bridge-wrapper" \
+    --executable "${APPDIR}/usr/bin/mds_gateway" \
+    --executable "${APPDIR}/usr/bin/mds_gateway_demo" \
+    --executable "${APPDIR}/usr/bin/mds_monitor" \
+    --custom-apprun "${APPDIR}/AppRun" \
     --output appimage
 
 # Move to project root
