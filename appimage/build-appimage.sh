@@ -130,13 +130,13 @@ chmod +x "${APPDIR}/usr/bin/mds-bridge-wrapper"
 # Update desktop file to use wrapper
 sed -i 's|Exec=mds_gateway|Exec=mds-bridge-wrapper|' "${APPDIR}/usr/share/applications/mds-bridge.desktop"
 
-# Create custom AppRun that uses our wrapper
-cat > "${APPDIR}/AppRun" << 'APPRUN_EOF'
+# Create custom AppRun that uses our wrapper (outside AppDir for linuxdeploy)
+cat > "${BUILD_DIR}/AppRun" << 'APPRUN_EOF'
 #!/bin/bash
 APPDIR="$(dirname "$(readlink -f "$0")")"
 exec "${APPDIR}/usr/bin/mds-bridge-wrapper" "$@"
 APPRUN_EOF
-chmod +x "${APPDIR}/AppRun"
+chmod +x "${BUILD_DIR}/AppRun"
 
 # Create AppImage
 echo ""
@@ -154,7 +154,7 @@ export OUTPUT="MDS_Bridge-${VERSION}-${ARCH}.AppImage"
     --executable "${APPDIR}/usr/bin/mds_gateway" \
     --executable "${APPDIR}/usr/bin/mds_gateway_demo" \
     --executable "${APPDIR}/usr/bin/mds_monitor" \
-    --custom-apprun "${APPDIR}/AppRun" \
+    --custom-apprun "${BUILD_DIR}/AppRun" \
     --output appimage
 
 # Move to project root
