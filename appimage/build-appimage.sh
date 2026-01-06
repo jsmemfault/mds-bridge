@@ -87,21 +87,22 @@ cat > "${APPDIR}/usr/bin/mds-bridge-wrapper" << 'WRAPPER_EOF'
 # Provides access to all MDS Bridge tools
 #
 
-APPDIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
-TOOL="${1:-mds_gateway}"
+# Get the bin directory where this script and the binaries live
+BINDIR="$(dirname "$(readlink -f "$0")")"
+TOOL="${1:-demo}"
 
 case "$TOOL" in
     gateway|mds_gateway)
         shift 2>/dev/null || true
-        exec "${APPDIR}/usr/bin/mds_gateway" "$@"
+        exec "${BINDIR}/mds_gateway" "$@"
         ;;
     demo|mds_gateway_demo)
         shift 2>/dev/null || true
-        exec "${APPDIR}/usr/bin/mds_gateway_demo" "$@"
+        exec "${BINDIR}/mds_gateway_demo" "$@"
         ;;
     monitor|mds_monitor)
         shift 2>/dev/null || true
-        exec "${APPDIR}/usr/bin/mds_monitor" "$@"
+        exec "${BINDIR}/mds_monitor" "$@"
         ;;
     --help|-h)
         echo "MDS Bridge - Memfault Diagnostic Service Tools"
@@ -109,19 +110,19 @@ case "$TOOL" in
         echo "Usage: $0 <command> [args...]"
         echo ""
         echo "Commands:"
-        echo "  gateway, mds_gateway      Upload diagnostic chunks (default)"
-        echo "  demo, mds_gateway_demo    CES booth demo with auto-reconnect"
+        echo "  demo, mds_gateway_demo    CES booth demo with auto-reconnect (default)"
+        echo "  gateway, mds_gateway      Upload diagnostic chunks"
         echo "  monitor, mds_monitor      Display diagnostic stream data"
         echo ""
         echo "Examples:"
-        echo "  $0 gateway 2fe3 0007"
-        echo "  $0 monitor 2fe3 0007"
+        echo "  $0 2fe3 0007"
+        echo "  $0 demo 2fe3 0007"
         echo "  $0 gateway 2fe3 0007 --dry-run"
         exit 0
         ;;
     *)
-        # Assume it's arguments to mds_gateway (the default tool)
-        exec "${APPDIR}/usr/bin/mds_gateway" "$@"
+        # Assume it's arguments to mds_gateway_demo (the default tool)
+        exec "${BINDIR}/mds_gateway_demo" "$@"
         ;;
 esac
 WRAPPER_EOF
@@ -166,9 +167,10 @@ echo "AppImage: ${PROJECT_DIR}/${OUTPUT}"
 echo ""
 echo "Usage:"
 echo "  ./${OUTPUT} --help"
-echo "  ./${OUTPUT} gateway 2fe3 0007"
-echo "  ./${OUTPUT} monitor 2fe3 0007"
+echo "  ./${OUTPUT} 2fe3 0007              # runs demo (default)"
+echo "  ./${OUTPUT} gateway 2fe3 0007      # runs gateway"
+echo "  ./${OUTPUT} monitor 2fe3 0007      # runs monitor"
 echo ""
 echo "Or extract and run directly:"
 echo "  ./${OUTPUT} --appimage-extract"
-echo "  ./squashfs-root/usr/bin/mds_gateway 2fe3 0007"
+echo "  ./squashfs-root/usr/bin/mds_gateway_demo 2fe3 0007"
